@@ -45,7 +45,7 @@ Than you can build the agent.
 go build -o go-agent.exe main.go
 ```
 
-3. **Start the C&C **
+3. ** Start the C&C **
 Ensure your Python environment is set up, then run:
 ```bash
 python server.py
