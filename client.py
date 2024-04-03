@@ -1,31 +1,32 @@
-# client.py
 import requests
-import time
+import argparse
 
-SERVER_URL = "http://localhost:5000"
-
-def submit_command(cmd):
-    response = requests.post(f"{SERVER_URL}/submit_command", json={"cmd": cmd})
+def submit_command(server_url, cmd):
+    response = requests.post(f"{server_url}/submit_command", json={"cmd": cmd})
     if response.status_code == 200:
-        cmd_id = response.json()["id"]
+        cmd_id = response.json().get("id")
         print(f"Command submitted successfully. ID: {cmd_id}")
         return cmd_id
     else:
         print("Failed to submit command.")
         return None
 
-def get_result(cmd_id):
-    response = requests.get(f"{SERVER_URL}/result/{cmd_id}")
+def get_result(server_url, cmd_id):
+    response = requests.get(f"{server_url}/result/{cmd_id}")
     if response.status_code == 200:
-        result = response.json()["result"]
+        result = response.json().get("result")
         print(f"Result for command {cmd_id}: {result}")
     else:
         print(f"Failed to get result for command {cmd_id}.")
 
 if __name__ == "__main__":
-    cmd = "echo Hello, World!"  # Example command
-    cmd_id = submit_command(cmd)
+    parser = argparse.ArgumentParser(description='Send commands to server and fetch results.')
+    parser.add_argument('command', type=str, help='Command to execute remotely.')
+    parser.add_argument('--server', type=str, default='http://localhost:5000', help='Server URL (default: http://localhost:5000)')
+
+    args = parser.parse_args()
+
+    cmd_id = submit_command(args.server, args.command)
     if cmd_id:
         print("Waiting for the result...")
-        time.sleep(2)  # Wait a bit before polling for the result
-        get_result(cmd_id)
+        get_result(args.server, cmd_id)
