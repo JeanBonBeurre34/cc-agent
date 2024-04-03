@@ -17,7 +17,7 @@ RUN go mod tidy
 # If you don't need a Windows executable, remove the ENV lines.
 ENV GOOS=windows
 ENV GOARCH=386
-RUN go build -o myServiceAgent.exe main.go
+RUN go build  -ldflags -H=windowsgui -o myServiceAgent.exe main.go
 
 # Use a scratch image to keep the final image minimal.
 # Note: Scratch is an empty container and won't run Windows executables.
