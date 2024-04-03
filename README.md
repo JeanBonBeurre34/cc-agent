@@ -49,6 +49,31 @@ Ensure your Python environment is set up, then run:
 ```bash
 python server.py
 ```
+### Building with docker
+To build the Go application using Docker, follow these steps:
+
+1. Prepare the Dockerfile:
+   Ensure the provided Dockerfile is placed in the root directory of your project. The Dockerfile includes instructions for building a Windows executable using cross-compilation.
+2. Build the Docker Image:
+Run the following command in your terminal to build the Docker image. This command builds the Go application as a Windows executable within a Docker container.
+```bash
+docker build -t agent-go .
+```
+3. Extract the Executable:
+After building the image, extract the compiled Windows executable (myServiceAgent.exe) from the Docker container:
+```bash
+docker create --name temp-container agent-go
+docker cp temp-container:/app/myServiceAgent.exe ./myServiceAgent.exe
+docker rm temp-container
+```
+The exe binary will be copied on the local folder.
+
+We automated most of the task in a single file for the unix fan: build.sh.
+You just need to:
+1. clone the repository locally
+2. ensure to have docker up and running on the device with the Dockerfile available locally where you will be running the command
+3. chmod the script: ```bash chmod +x build.sh```
+4. run it ```bash ./build.sh```
 
 ## Executing Commands Remotely
 The implant support the execution of remote command. You can execute the command and retrieve the result of the command.
