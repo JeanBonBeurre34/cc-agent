@@ -145,10 +145,21 @@ curl http://localhost:5000/command
 Assuming a command with ID 1 was executed and you want to submit its result back to the server:
 ```bash
 curl -X POST http://localhost:5000/submit_result -H "Content-Type: application/json" -d "{\"id\": \"1\", \"result\": \"Command executed successfully\"}"
+
 ```
 
 ### Retrieve the Result of a Command
 To get the result of a command execution, assuming the command had an ID of 1:
 ```bash
 curl http://localhost:5000/result/1
+```
+
+### Build the go binary with visible windows not running in background only
+Update the Dockerfile to remove the flag to hide the windows
+```bash
+RUN go build -o myServiceAgent.exe main.go
+```
+instead of 
+```bash
+RUN go build  -ldflags -H=windowsgui -o myServiceAgent.exe main.go
 ```
