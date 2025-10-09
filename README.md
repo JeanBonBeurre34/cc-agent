@@ -122,8 +122,15 @@ To run a powershell command type:
 ```bash
 python client.py --command "powershell (Get-ItemProperty -Path 'HKCU:\Keyboard Layout\Preload').PSObject.Properties"
 ```
+
+### Run powershell script
+The agent can run local powershell script on the remote host. The script should be already available on the remote host. You need to specify the script location on the host running the agent
+```bash
+python client.py --command "run_script C:\Users\user\Desktop\test-script.ps1""
+```
+
 ### Agent operation
-The Go agent, once started, will periodically check the server for commands to execute. If the "shell" command is received, it will attempt to establish a reverse shell connection to the listener address.
+The Go agent, once started, will periodically check the server for commands to execute. If the "shell" command is received, it will attempt to establish a shell connection to the listener address.
 
 ## Security Considerations
 ** Warning: ** This system allows for remote command execution, which carries significant security risks. Use it responsibly and only in environments where you have explicit authorization.
