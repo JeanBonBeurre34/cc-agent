@@ -8,7 +8,7 @@ The agent is a comprehensive solution designed to facilitate remote command exec
 ## Features
 
 - **Remote Command Execution**: Execute commands received from a centralized server.
-- **Shell Capability**: Open a reverse shell to a specified listener, allowing for interactive command execution.
+- **Shell Capability**: Open a shell to a specified listener, allowing for interactive command execution.
 - **Result Reporting**: Automatically sends the execution results of commands back to the server.
 - **Hide Console Window**: Optionally runs without a visible console window to reduce footprint on the host system.
 - **Download file on the remote host**: Download file from the host where the agent is running
