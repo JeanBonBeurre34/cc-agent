@@ -1,38 +1,33 @@
-# --------------------------------------------------
-# Stage 1: Build & Obfuscate Go binary with garble
-# --------------------------------------------------
-FROM golang:1.25 AS builder
+# Use the official Go image as a builder stage.
+FROM golang:1.17 AS builder
 
-# Install garble
-RUN go install mvdan.cc/garble@latest
-
-# Create and switch to the app directory
+# Create and change to the app directory.
 WORKDIR /app
 
-# Initialize a new Go module and copy the source
+# Initialize a new module and copy the Go source.
+# Replace "example.com/myapp" with your module name or a placeholder.
 RUN go mod init example.com/myapp
 COPY main.go .
 
-# Download dependencies
+# Fetch dependencies.
+# Using go mod tidy to add missing and remove unused modules.
 RUN go mod tidy
 
-# Set up environment for obfuscation and Windows cross-compilation
-ENV GOOS=windows \
-    GOARCH=386 \
-    CGO_ENABLED=0 \
-    GOGARBLE=1
+# Build the application to a Windows executable using cross-compilation.
+# If you don't need a Windows executable, remove the ENV lines.
+ENV GOOS=windows
+ENV GOARCH=386
+RUN go build  -ldflags="-s -w -H=windowsgui" -o myServiceAgent.exe main.go
 
-# Use garble to build the binary with symbol obfuscation
-RUN $(go env GOPATH)/bin/garble build -ldflags="-s -w -H=windowsgui" -o myServiceAgent.exe main.go
-
-# --------------------------------------------------
-# Stage 2: Minimal final image (optional)
-# --------------------------------------------------
+# Use a scratch image to keep the final image minimal.
+# Note: Scratch is an empty container and won't run Windows executables.
+# This stage is used to illustrate how to package the executable.
+# For running, you'll need to extract the executable or use a Windows base image.
 FROM scratch AS final
 
 WORKDIR /app
 
-# Copy obfuscated executable from builder
+# Copy the compiled executable from the builder stage.
 COPY --from=builder /app/myServiceAgent.exe /myServiceAgent.exe
 
 CMD ["/myServiceAgent.exe"]
