@@ -133,6 +133,12 @@ This helper support downloading a file from a remote http server directly on the
 ```bash
 python client.py --command "fetchfile http://192.168.56.101/script.ps1 C:\Users\user\Desktop\test.ps1"
 ```
+### Browser History
+The agent support checking the browser history and location of the history. The following command will list the browser installed and the location of the history:
+```bash
+python client.py --command "browser_history"
+```
+Than you can download the browser history running the download option.
 ### Agent operation
 The Go agent, once started, will periodically check the server for commands to execute. If the "shell" command is received, it will attempt to establish a shell connection to the listener address.
 
