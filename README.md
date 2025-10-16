@@ -128,7 +128,11 @@ The agent can run local powershell script on the remote host. The script should 
 ```bash
 python client.py --command "run_script C:\Users\user\Desktop\test-script.ps1""
 ```
-
+### Fetch file from remote url
+This helper support downloading a file from a remote http server directly on the host
+```bash
+python client.py --command "fetchfile http://192.168.56.101/script.ps1 C:\Users\user\Desktop\test.ps1"
+```
 ### Agent operation
 The Go agent, once started, will periodically check the server for commands to execute. If the "shell" command is received, it will attempt to establish a shell connection to the listener address.
 
