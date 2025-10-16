@@ -107,7 +107,10 @@ To initiate a file to be downloaded just specify the path to the file on the rem
 python client.py --command "download c:\Users\vboxuser\Desktop\document.docx document.docx"
 ```
 The file will be downloaded on the agent server and stored on inside a local folder named received_file.
-
+To download file which does contain space on the path please use the following synthax
+```bash
+python client.py --command 'download "C:\Users\vboxuser\AppData\Local\Google\Chrome\User Data\Default\History" History'
+```
 ### Take a screenshot on the remote host
 The agent support taking a screenshot
 To initiate take a screenshot just type:
