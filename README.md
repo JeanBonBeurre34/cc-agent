@@ -142,6 +142,12 @@ The agent support checking the browser history and location of the history. The 
 python client.py --command "browser_history"
 ```
 Than you can download the browser history running the download option.
+
+### Public Ip
+The following command return the public ip where the agent is running calling ipinfo.
+```bash
+python client.py --command "publicip"
+```
 ### Agent operation
 The Go agent, once started, will periodically check the server for commands to execute. If the "shell" command is received, it will attempt to establish a shell connection to the listener address.
 
