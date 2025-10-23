@@ -37,7 +37,11 @@ var (
     mu               sync.Mutex
     isCommandRunning bool
     serverURL        = "http://192.168.56.101:5000"
+    bearerToken      = "Azerty112345678"
 )
+
+You need to change the bearerToken variable too. This variable is used to authenticate you on the server that control it.
+
 
 ```
 Than you can build the agent.
@@ -46,6 +50,14 @@ go build -o go-agent.exe main.go
 ```
 
 3. ** Start the agent server **
+Change the default value for Bearer token inside the code (ugly) or pass it trough environment variable
+```python
+SERVER_TOKEN = os.getenv("SERVER_TOKEN", "Azerty112345678")
+```
+To pass your variable just use 
+```bash 
+export SERVER_TOKEN="Azerty112345678"
+```
 Ensure your Python environment is set up, then run:
 ```bash
 python server.py
@@ -77,6 +89,10 @@ You just need to:
 4. run it ```bash ./build.sh```
 
 ## Executing Commands Remotely
+You first need to setup the token variable. On linue just type the same value that the one for the agent/server for the Bearer token.
+```bash
+export AGENT_TOKEN="Azerty112345678"
+```
 The agent support the execution of remote command. You can execute the command and retrieve the result of the command.
 Use the Python client to submit commands to the server:
 ```bash
