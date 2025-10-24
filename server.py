@@ -78,4 +78,13 @@ def get_result(command_id):
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0')
+    cert_file = "cert.pem"
+    key_file = "key.pem"
+
+    if os.path.exists(cert_file) and os.path.exists(key_file):
+        print("[+] Starting Flask server with HTTPS...")
+        app.run(host='0.0.0.0', port=5000, ssl_context=(cert_file, key_file))
+    else:
+        print("[-] Certificates not found, falling back to HTTP.")
+        app.run(host='0.0.0.0', port=5000)
+

