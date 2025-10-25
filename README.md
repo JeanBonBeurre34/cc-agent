@@ -175,6 +175,10 @@ To stop it just use this command
 ```bash
 python client.py --command "reverse_proxy_stop"
 ```
+By default the server.py will create two port 1080 to listen locally on locahost and 5555 to catch the incoming reverse tcp tunnel.
+You need to update the proxychain config: /etc/proxychains.conf to add the following line
+socks5 127.0.0.1 1080
+
 ### Agent operation
 The Go agent, once started, will periodically check the server for commands to execute. If the "shell" command is received, it will attempt to establish a shell connection to the listener address.
 
