@@ -164,6 +164,17 @@ The following command return the public ip where the agent is running calling ip
 ```bash
 python client.py --command "publicip"
 ```
+
+### Forward TCP proxy
+You can start a reverse tcp proxy
+```bash
+python client.py --command "reverse_proxy_start"
+```
+
+To stop it just use this command
+```bash
+python client.py --command "reverse_proxy_stop"
+```
 ### Agent operation
 The Go agent, once started, will periodically check the server for commands to execute. If the "shell" command is received, it will attempt to establish a shell connection to the listener address.
 
