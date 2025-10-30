@@ -84,7 +84,7 @@ def list_agents(server_url, verify_ssl=True):
 # --- Entry point ---
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Remote command client supporting HTTPS and per-agent targeting.")
-    parser.add_argument("--submit", type=str, help="Submit a command to a specific or all agents")
+    parser.add_argument("--submit","--command", type=str, help="Submit a command to a specific or all agents")
     parser.add_argument("--get-results", action="store_true", help="Fetch command results (optionally per agent)")
     parser.add_argument("--list-agents", action="store_true", help="List all connected agents")
     parser.add_argument("--agent-id", type=str, help="Target a specific agent ID")
