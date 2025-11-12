@@ -209,6 +209,12 @@ By default the server.py will create two port 1080 to listen locally on locahost
 You need to update the proxychain config: /etc/proxychains.conf to add the following line
 socks5 127.0.0.1 1080
 
+### Beacon command retrieval interval
+The following commond setup the beacon retrieval interval
+```bash
+python client.py --command "beacon min=5 max=10" --agent-id "windows11-test0_63f53f570a475ae3"
+```
+
 ### Agent operation
 The Go agent, once started, will periodically check the server for commands to execute. If the "shell" command is received, it will attempt to establish a shell connection to the listener address.
 
