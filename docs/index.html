@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>cc-agent – Red Team C2 Agent</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta
+    name="description"
+    content="cc-agent is a red-team oriented C2 agent designed for realistic EDR/AMSI resilience testing, with customizable User-Agent and flexible randomized beaconing."
+  />
+  <link rel="icon" href="https://github.githubassets.com/favicons/favicon.svg" />
+  <style>
+    :root {
+      --bg: #05060a;
+      --bg-alt: #0e1018;
+      --accent: #4f46e5;
+      --accent-soft: rgba(79, 70, 229, 0.15);
+      --accent-strong: #7c3aed;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --border: #1f2933;
+      --danger: #f97373;
+      --code-bg: #111827;
+      --radius: 16px;
+      --shadow-soft: 0 18px 45px rgba(0, 0, 0, 0.55);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+        "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #111827 0, #020617 45%, #020617 100%);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .page {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 16px 80px;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-mark {
+      width: 32px;
+      height: 32px;
+      border-radius: 999px;
+      background: radial-gradient(circle at 30% 20%, #a855f7, #4f46e5 55%, #020617 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: 700;
+      color: #e5e7eb;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+    }
+
+    .logo-text {
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    nav {
+      display: flex;
+      gap: 18px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    nav a {
+      position: relative;
+      padding-bottom: 4px;
+    }
+
+    nav a::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      bottom: 0;
+      width: 0;
+      height: 2px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+      transition: width 0.2s ease-out;
+    }
+
+    nav a:hover::after {
+      width: 100%;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 3fr) minmax(0, 2.4fr);
+      gap: 32px;
+      align-items: center;
+    }
+
+    @media (max-width: 880px) {
+      .hero {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.95);
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      margin-bottom: 14px;
+    }
+
+    .pill span.dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: #22c55e;
+      box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.12);
+    }
+
+    h1 {
+      font-size: clamp(32px, 5vw, 42px);
+      margin: 0 0 10px;
+      letter-spacing: -0.03em;
+    }
+
+    .hero-highlight {
+      background: linear-gradient(120deg, #e5e7eb, #a5b4fc, #f9a8d4);
+      -webkit-background-clip: text;
+      color: transparent;
+    }
+
+    .hero-subtitle {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.6;
+      max-width: 540px;
+      margin-bottom: 22px;
+    }
+
+    .badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 26px;
+    }
+
+    .badge {
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.5);
+      background: rgba(15, 23, 42, 0.85);
+      color: var(--muted);
+    }
+
+    .badge strong {
+      color: #e5e7eb;
+      font-weight: 500;
+    }
+
+    .cta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 9px 16px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      background: linear-gradient(120deg, var(--accent), var(--accent-strong));
+      color: white;
+      box-shadow: 0 14px 40px rgba(15, 23, 42, 0.8);
+    }
+
+    .btn-secondary {
+      background: transparent;
+      border-color: rgba(148, 163, 184, 0.6);
+      color: var(--muted);
+      box-shadow: none;
+    }
+
+    .cta-note {
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .hero-footnote {
+      font-size: 11px;
+      color: var(--danger);
+      opacity: 0.9;
+    }
+
+    .hero-panel {
+      background: radial-gradient(circle at top left, #1f2937 0, #020617 55%);
+      padding: 18px 18px 14px;
+      border-radius: 22px;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      box-shadow: var(--shadow-soft);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-panel::before {
+      content: "";
+      position: absolute;
+      inset: -60%;
+      background:
+        radial-gradient(circle at 0% 0%, rgba(79, 70, 229, 0.2) 0, transparent 40%),
+        radial-gradient(circle at 100% 0%, rgba(236, 72, 153, 0.14) 0, transparent 45%);
+      opacity: 0.9;
+      mix-blend-mode: screen;
+      pointer-events: none;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .panel-title {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .panel-tag {
+      font-size: 11px;
+      border-radius: 999px;
+      padding: 3px 9px;
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      color: var(--muted);
+    }
+
+    pre {
+      margin: 0;
+      padding: 12px;
+      border-radius: 14px;
+      background: rgba(15, 23, 42, 0.95);
+      font-size: 12px;
+      line-height: 1.4;
+      overflow-x: auto;
+      border: 1px solid rgba(30, 64, 175, 0.65);
+      position: relative;
+      z-index: 1;
+    }
+
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      color: #e5e7eb;
+    }
+
+    .section {
+      margin-top: 54px;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .section-title {
+      font-size: 18px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .section-sub {
+      font-size: 13px;
+      color: var(--muted);
+      max-width: 460px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    @media (max-width: 880px) {
+      .grid-3 {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    .card {
+      padding: 14px 14px 16px;
+      border-radius: var(--radius);
+      border: 1px solid rgba(55, 65, 81, 0.9);
+      background: rgba(15, 23, 42, 0.9);
+      box-shadow: 0 12px 30px rgba(0, 0, 0, 0.7);
+    }
+
+    .card h3 {
+      font-size: 14px;
+      margin: 0 0 6px;
+    }
+
+    .card p {
+      margin: 0;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .chip-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .chip {
+      font-size: 11px;
+      padding: 3px 7px;
+      border-radius: 999px;
+      border: 1px solid rgba(75, 85, 99, 0.9);
+      color: var(--muted);
+      background: rgba(15, 23, 42, 0.95);
+    }
+
+    .layout-two {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+      gap: 18px;
+      margin-top: 16px;
+    }
+
+    @media (max-width: 880px) {
+      .layout-two {
+        grid-template-columns: minmax(0, 1fr);
+      }
+    }
+
+    .note {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+
+    footer {
+      margin-top: 50px;
+      border-top: 1px solid rgba(31, 41, 55, 0.9);
+      padding-top: 18px;
+      font-size: 11px;
+      color: var(--muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: space-between;
+    }
+
+    .danger-text {
+      color: var(--danger);
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div class="logo">
+        <div class="logo-mark">C</div>
+        <div>
+          <div class="logo-text">cc-agent</div>
+          <div style="font-size: 11px; color: var(--muted);">
+            Red team C2 agent &amp; lab implant
+          </div>
+        </div>
+      </div>
+      <nav>
+        <a href="#features">Features</a>
+        <a href="#config">Config</a>
+        <a href="#usage">Usage</a>
+        <a href="https://github.com/JeanBonBeurre34/cc-agent" target="_blank" rel="noreferrer">
+          GitHub
+        </a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div>
+          <div class="pill">
+            <span class="dot"></span>
+            For labs, red teams &amp; defenders
+          </div>
+          <h1>
+            A compact C2 agent for
+            <span class="hero-highlight">EDR/AMSI resilience testing</span>.
+          </h1>
+          <p class="hero-subtitle">
+            <strong>cc-agent</strong> is a small, opinionated C2 agent intended for
+            controlled environments. It is built to emulate modern attacker tradecraft:
+            configurable <strong>User-Agent</strong>, randomized &amp; customizable
+            <strong>beacon intervals</strong>, and behavior designed to stress-test
+            endpoint defenses and AMSI-backed inspection.
+          </p>
+
+          <div class="badges">
+            <div class="badge"><strong>Platform:</strong> Windows (agent)</div>
+            <div class="badge"><strong>Focus:</strong> C2 &amp; telemetry</div>
+            <div class="badge"><strong>Use case:</strong> Red / blue teaming</div>
+          </div>
+
+          <div class="cta-row">
+            <a
+              class="btn"
+              href="https://github.com/JeanBonBeurre34/cc-agent"
+              target="_blank"
+              rel="noreferrer"
+            >
+              View on GitHub
+              <span>↗</span>
+            </a>
+            <a class="btn btn-secondary" href="#usage">
+              Quickstart
+            </a>
+          </div>
+          <div class="cta-note">
+            Designed for <strong>research &amp; training</strong> only. Never deploy on systems
+            you do not own or have explicit authorization to test.
+          </div>
+          <div class="hero-footnote">
+            The project emulates evasion techniques (including AMSI-aware behavior) to help
+            evaluate defensive coverage – it is <em>not</em> guaranteed to bypass any specific EDR.
+          </div>
+        </div>
+
+        <div class="hero-panel" aria-hidden="true">
+          <div class="panel-header">
+            <div class="panel-title">Example agent configuration</div>
+            <div class="panel-tag">config.toml</div>
+          </div>
+          <pre><code># Beacon &amp; C2
+[agent]
+server      = "https://c2.example.com"
+min_beacon  = 10      # seconds
+max_beacon  = 45      # seconds
+jitter      = true
+
+# HTTP profile
+http_user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+
+# Telemetry
+tls_verify  = true
+log_level   = "info"</code></pre>
+        </div>
+      </section>
+
+      <section class="section" id="features">
+        <div class="section-header">
+          <div class="section-title">Core Features</div>
+          <p class="section-sub">
+            cc-agent focuses on realism and control: you can shape how the agent looks on the wire,
+            how often it calls home, and how it behaves under EDR &amp; AMSI monitoring,
+            without drowning in framework complexity.
+          </p>
+        </div>
+
+        <div class="grid-3">
+          <article class="card">
+            <h3>EDR / AMSI-oriented behavior</h3>
+            <p>
+              The agent is structured to <strong>emulate techniques used to reduce visibility</strong>
+              under EDR and AMSI inspection: in-memory operation, staged behavior, and low-noise
+              network activity. This helps you validate how well your stack surfaces and
+              correlates suspicious activity.
+            </p>
+            <div class="chip-bar">
+              <span class="chip">EDR lab testing</span>
+              <span class="chip">AMSI-aware flows</span>
+              <span class="chip">Telemetry exercises</span>
+            </div>
+          </article>
+
+          <article class="card">
+            <h3>Configurable HTTP fingerprint</h3>
+            <p>
+              Tune the agent’s <strong>User-Agent</strong> and HTTP profile so it blends into
+              realistic traffic patterns during exercises. This is useful for simulating
+              different threat profiles and testing proxy, IDS/IPS, and EDR correlation rules.
+            </p>
+            <div class="chip-bar">
+              <span class="chip">Custom User-Agent</span>
+              <span class="chip">Proxy-friendly</span>
+              <span class="chip">Traffic profiling</span>
+            </div>
+          </article>
+
+          <article class="card">
+            <h3>Randomized &amp; custom beaconing</h3>
+            <p>
+              Define <strong>minimum and maximum beacon intervals</strong> and let the agent
+              pick randomized values inside that window, or pin a fixed interval for deterministic
+              runs. This mirrors real-world C2 beacons and allows defenders to test their
+              detection pipelines at different noise levels.
+            </p>
+            <div class="chip-bar">
+              <span class="chip">Randomized intervals</span>
+              <span class="chip">Min/max control</span>
+              <span class="chip">Detection tuning</span>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="config">
+        <div class="section-header">
+          <div class="section-title">Configuration</div>
+          <p class="section-sub">
+            cc-agent is designed to be controlled primarily via configuration, so you can quickly
+            adapt the same binary to different scenarios: stealthy long-range beacons, noisy
+            detection drills, or tightly profiled lab tests.
+          </p>
+        </div>
+
+        <div class="layout-two">
+          <article class="card">
+            <h3>Beacon behavior</h3>
+            <p>
+              Beaconing is fully configurable:
+            </p>
+            <ul style="padding-left: 18px; margin: 8px 0 0; font-size: 13px; color: var(--muted);">
+              <li><strong>Custom min/max intervals</strong> in seconds.</li>
+              <li><strong>Random jitter</strong> between those bounds.</li>
+              <li>Ability to simulate <strong>high-noise or low-noise</strong> operators.</li>
+            </ul>
+            <p class="note">
+              In long-running exercises, you can vary the beacon profile to mimic different
+              threat actors and study how that affects your alerting and triage workflows.
+            </p>
+          </article>
+
+          <article class="card">
+            <h3>User-Agent &amp; HTTP profile</h3>
+            <p>
+              The <code>http_user_agent</code> setting lets you control how the agent presents
+              itself to proxies and inspection points:
+            </p>
+            <ul style="padding-left: 18px; margin: 8px 0 0; font-size: 13px; color: var(--muted);">
+              <li>Impersonate common browsers or system processes.</li>
+              <li>Test how well your stack flags <strong>off-profile</strong> UAs.</li>
+              <li>Run A/B experiments on detection logic.</li>
+            </ul>
+            <p class="note">
+              This is ideal for red/blue team collaboration: defenders can write rules based on
+              these profiles, then validate them against the agent.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="section" id="usage">
+        <div class="section-header">
+          <div class="section-title">Quickstart</div>
+          <p class="section-sub">
+            This is a minimal overview. Refer to the GitHub repository for up-to-date build
+            instructions, supported platforms and advanced usage details.
+          </p>
+        </div>
+
+        <div class="layout-two">
+          <article class="card">
+            <h3>1. Clone &amp; build</h3>
+            <pre><code>git clone https://github.com/JeanBonBeurre34/cc-agent.git
+cd cc-agent
+
+# Build the agent (example)
+# update with the actual build command from the repo
+go build -o cc-agent.exe ./cmd/agent</code></pre>
+            <p class="note">
+              Replace the build command with whatever is documented in the repository
+              (<code>README.md</code>, Makefile, etc.).
+            </p>
+          </article>
+
+          <article class="card">
+            <h3>2. Configure &amp; run</h3>
+            <pre><code># Edit configuration file
+# (path / format may differ – see repo docs)
+[agent]
+server      = "https://your-c2-server"
+min_beacon  = 15
+max_beacon  = 60
+http_user_agent = "Mozilla/5.0 (...)"
+
+# Then run the agent on a lab endpoint
+cc-agent.exe</code></pre>
+            <p class="note">
+              Always test in an isolated, authorized environment (lab or
+              dedicated test hosts). Never on production or third-party systems.
+            </p>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div>
+        &copy; <span id="year"></span> cc-agent ·
+        <a
+          href="https://github.com/JeanBonBeurre34/cc-agent"
+          target="_blank"
+          rel="noreferrer"
+        >
+          GitHub repository
+        </a>
+      </div>
+      <div class="danger-text">
+        For authorized security testing &amp; research only.
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    document.getElementById("year").textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>
