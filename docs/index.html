@@ -452,7 +452,7 @@
             controlled environments. It is built to emulate modern attacker tradecraft:
             configurable <strong>User-Agent</strong>, randomized &amp; customizable
             <strong>beacon intervals</strong>, and behavior designed to stress-test
-            endpoint defenses and AMSI-backed inspection.
+            endpoint defenses, AMSI-backed inspection and EDR.
           </p>
 
           <div class="badges">
@@ -480,7 +480,7 @@
             you do not own or have explicit authorization to test.
           </div>
           <div class="hero-footnote">
-            The project emulates evasion techniques (including AMSI-aware behavior) to help
+            The project support evasion techniques (including AMSI-aware behavior) to help
             evaluate defensive coverage – it is <em>not</em> guaranteed to bypass any specific EDR.
           </div>
         </div>
@@ -488,21 +488,19 @@
         <div class="hero-panel" aria-hidden="true">
           <div class="panel-header">
             <div class="panel-title">Example agent configuration</div>
-            <div class="panel-tag">config.toml</div>
           </div>
           <pre><code># Beacon &amp; C2
 [agent]
 server      = "https://c2.example.com"
 min_beacon  = 10      # seconds
 max_beacon  = 45      # seconds
-jitter      = true
 
 # HTTP profile
 http_user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
 
 # Telemetry
 tls_verify  = true
-log_level   = "info"</code></pre>
+</code></pre>
         </div>
       </section>
 
