@@ -624,7 +624,7 @@ cd cc-agent
 
 # Build the agent (example)
 # update with the actual build command from the repo
-go build -o cc-agent.exe ./cmd/agent</code></pre>
+go build -o go-agent.exe main.go</code></pre>
             <p class="note">
               Replace the build command with whatever is documented in the repository
               (<code>README.md</code>, Makefile, etc.).
@@ -632,23 +632,22 @@ go build -o cc-agent.exe ./cmd/agent</code></pre>
           </article>
 
           <article class="card">
-            <h3>2. Build with Docker</h3>
+            <h3>2. Build with Docker (build.sh)</h3>
             <pre><code># From the repository root
-# (requires a Dockerfile in the project)
+# Ensure Docker is installed and running
 
-# Build the image
-docker build -t cc-agent-builder .
+# Make the helper script executable
+chmod +x build.sh
 
-# Run the build container and export binaries
-docker run --rm \
-  -v $(pwd)/build:/out \
-  cc-agent-builder
+# Run the Docker-based build
+./build.sh
 
-# Your compiled artifacts should now be in ./build</code></pre>
+# The Windows executable (e.g. myServiceAgent.exe)
+# will be copied to the current folder.</code></pre>
             <p class="note">
-              Adapt the image name, <code>Dockerfile</code> path and output directory to match
-              the actual conventions used in the repository. Check the project
-              <code>README.md</code> for the most accurate instructions.
+              The <code>build.sh</code> script wraps the Docker build and extraction steps
+              described in the project <code>README.md</code>, making it easier to produce the
+              Windows agent from a Unix-like system.
             </p>
           </article>
         </div>
