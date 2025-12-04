@@ -618,7 +618,7 @@ tls_verify  = true
 
         <div class="layout-two">
           <article class="card">
-            <h3>1. Clone &amp; build</h3>
+            <h3>1. Clone &amp; build (Go)</h3>
             <pre><code>git clone https://github.com/JeanBonBeurre34/cc-agent.git
 cd cc-agent
 
@@ -632,19 +632,23 @@ go build -o cc-agent.exe ./cmd/agent</code></pre>
           </article>
 
           <article class="card">
-            <h3>2. Configure &amp; run</h3>
-            <pre><code># Edit configuration file
-# (path / format may differ – see repo docs)
-[agent]
-server      = "https://your-c2-server"
-min_beacon  = 15
-max_beacon  = 60
-http_user_agent = "Mozilla/5.0 (...)"
+            <h3>2. Build with Docker</h3>
+            <pre><code># From the repository root
+# (requires a Dockerfile in the project)
 
-# Then run the agent on a lab endpoint
-cc-agent.exe</code></pre>
+# Build the image
+docker build -t cc-agent-builder .
+
+# Run the build container and export binaries
+docker run --rm \
+  -v $(pwd)/build:/out \
+  cc-agent-builder
+
+# Your compiled artifacts should now be in ./build</code></pre>
             <p class="note">
-              Always test in an isolated or authorized environment 
+              Adapt the image name, <code>Dockerfile</code> path and output directory to match
+              the actual conventions used in the repository. Check the project
+              <code>README.md</code> for the most accurate instructions.
             </p>
           </article>
         </div>
