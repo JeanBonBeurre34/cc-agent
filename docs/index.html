@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta
     name="description"
-    content="cc-agent is a red-team oriented C2 agent designed for realistic EDR/AMSI resilience testing, with customizable User-Agent and flexible randomized beaconing."
+    content="cc-agent is a red-team oriented C2 agent designed for realistic EDR/AMSI resilience testing, with customizable User-Agent, flexible randomized beaconing and pre-built operator actions."
   />
   <link rel="icon" href="https://github.githubassets.com/favicons/favicon.svg" />
   <style>
@@ -510,7 +510,7 @@ tls_verify  = true
           <p class="section-sub">
             cc-agent focuses on realism and control: you can shape how the agent looks on the wire,
             how often it calls home, and how it behaves under EDR &amp; AMSI monitoring,
-            without drowning in framework complexity.
+            while also offering a set of built-in actions to simulate post-exploitation workflows.
           </p>
         </div>
 
@@ -556,6 +556,26 @@ tls_verify  = true
               <span class="chip">Randomized intervals</span>
               <span class="chip">Min/max control</span>
               <span class="chip">Detection tuning</span>
+            </div>
+          </article>
+
+          <article class="card">
+            <h3>Built-in operator actions</h3>
+            <p>
+              Beyond beaconing, <strong>cc-agent</strong> ships with a collection of
+              pre-built commands to simulate common operator workflows: a simple SOCKS5-style
+              pivot, file download from the host where the agent is running, screenshot capture,
+              remote PowerShell execution, file upload from a remote HTTP server, reverse shell and many more
+              built-in features.
+            </p>
+            <div class="chip-bar">
+              <span class="chip">SOCKS5 pivot</span>
+              <span class="chip">Host file download</span>
+              <span class="chip">Screenshots</span>
+              <span class="chip">PowerShell runner</span>
+              <span class="chip">HTTP file upload</span>
+              <span class="chip">Reverse shell</span>
+              <span class="chip">Modular actions</span>
             </div>
           </article>
         </div>
