@@ -113,17 +113,20 @@ def submit_result():
 
     # --- File handling ---
     if file_name and result_b64:
+        safe_name = os.path.basename(file_name.replace("\\", "/"))
         try:
+            if not safe_name:
+                raise ValueError("Invalid file name after sanitization")
             os.makedirs("received_files", exist_ok=True)
             file_bytes = base64.b64decode(result_b64)
-            file_path = os.path.join("received_files", file_name)
+            file_path = os.path.join("received_files", safe_name)
             with open(file_path, "wb") as f:
                 f.write(file_bytes)
             print(f"[+] Saved file: {file_path} ({len(file_bytes)} bytes)")
-            result_entry["output"] = f"📁 File '{file_name}' saved successfully ({len(file_bytes)} bytes)"
+            result_entry["output"] = f"📁 File '{safe_name}' saved successfully ({len(file_bytes)} bytes)"
             result_entry["file_saved_path"] = file_path
         except Exception as e:
-            err_msg = f"❌ Error saving file '{file_name}': {e}"
+            err_msg = f"❌ Error saving file '{safe_name}': {e}"
             print(err_msg)
             result_entry["output"] = err_msg
 
@@ -260,3 +263,4 @@ if __name__ == "__main__":
         app.run(host="0.0.0.0", port=5000)
 
                                     
+            
