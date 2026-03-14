@@ -2,6 +2,7 @@
 from flask import Flask, request, jsonify, abort
 import base64
 import os
+import queue
 import socket
 import threading
 from datetime import datetime
@@ -207,11 +208,16 @@ def bridge_data(src, dst):
                 pass
 
 
-def handle_client(client_conn, agent_listener):
+def handle_client(client_conn, agent_queue):
     try:
         print("[*] Waiting for agent connection to pair...")
-        agent_conn, agent_addr = agent_listener.accept()
-        print(f"[+] Paired with agent {agent_addr}")
+        try:
+            agent_conn = agent_queue.get(timeout=30)
+        except queue.Empty:
+            print("[-] Timed out waiting for agent connection")
+            client_conn.close()
+            return
+        print(f"[+] Paired agent with SOCKS client")
         threading.Thread(target=bridge_data, args=(client_conn, agent_conn), daemon=True).start()
         threading.Thread(target=bridge_data, args=(agent_conn, client_conn), daemon=True).start()
     except Exception as e:
@@ -228,22 +234,36 @@ def start_reverse_proxy(listen_port=1080, agent_port=5555):
     print(f"    • SOCKS listener: {SOCKS_BIND}:{listen_port}")
     print(f"    • Agent connection port: {agent_port}")
 
+    agent_queue = queue.Queue()
+
     agent_listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     agent_listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     agent_listener.bind(("0.0.0.0", agent_port))
-    agent_listener.listen(5)
+    agent_listener.listen(20)
+
+    def accept_agents():
+        while True:
+            try:
+                agent_conn, agent_addr = agent_listener.accept()
+                print(f"[+] Agent connected from {agent_addr}, queued")
+                agent_queue.put(agent_conn)
+            except Exception as e:
+                print(f"[-] Agent accept error: {e}")
+                break
+
+    threading.Thread(target=accept_agents, daemon=True).start()
 
     local_listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     local_listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     local_listener.bind((SOCKS_BIND, listen_port))
-    local_listener.listen(5)
+    local_listener.listen(20)
     print(f"[+] SOCKS listener active at {SOCKS_BIND}:{listen_port}")
     print(f"    Add to /etc/proxychains4.conf: socks5 {SOCKS_BIND} {listen_port}")
 
     while True:
         client_conn, client_addr = local_listener.accept()
         print(f"[+] New SOCKS client from {client_addr}")
-        threading.Thread(target=handle_client, args=(client_conn, agent_listener), daemon=True).start()
+        threading.Thread(target=handle_client, args=(client_conn, agent_queue), daemon=True).start()
 
 # ===============================
 # --- ENTRY POINT ---
@@ -262,5 +282,4 @@ if __name__ == "__main__":
         print("[-] Certificates not found, using HTTP (dev mode).")
         app.run(host="0.0.0.0", port=5000)
 
-                                    
-            
+           
